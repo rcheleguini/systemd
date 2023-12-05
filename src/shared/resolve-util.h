@@ -27,6 +27,7 @@ enum DnsCacheMode {
 typedef enum ResolveSupport ResolveSupport;
 typedef enum DnssecMode DnssecMode;
 typedef enum DnsOverTlsMode DnsOverTlsMode;
+typedef enum DnsOverHttpsMode DnsOverHttpsMode;
 
 /* Do not change the order, see link_get_llmnr_support() or link_get_mdns_support(). */
 enum ResolveSupport {
@@ -70,6 +71,21 @@ enum DnsOverTlsMode {
         _DNS_OVER_TLS_MODE_INVALID = -EINVAL,
 };
 
+enum DnsOverHttpsMode {
+        /* No connection is made for DNS-over-HTTPS */
+        DNS_OVER_HTTPS_NO,
+
+        /* Try to connect using DNS-over-HTTPS, but if connection fails,
+         * fall back to using an unencrypted connection */
+        DNS_OVER_HTTPS_OPPORTUNISTIC,
+
+        /* Enforce DNS-over-HTTPS and require valid server certificates */
+        DNS_OVER_HTTPS_YES,
+
+        _DNS_OVER_HTTPS_MODE_MAX,
+        _DNS_OVER_HTTPS_MODE_INVALID = -EINVAL,
+};
+
 CONFIG_PARSER_PROTOTYPE(config_parse_resolve_support);
 CONFIG_PARSER_PROTOTYPE(config_parse_dnssec_mode);
 CONFIG_PARSER_PROTOTYPE(config_parse_dns_over_tls_mode);
@@ -83,6 +99,9 @@ DnssecMode dnssec_mode_from_string(const char *s) _pure_;
 
 const char* dns_over_tls_mode_to_string(DnsOverTlsMode p) _const_;
 DnsOverTlsMode dns_over_tls_mode_from_string(const char *s) _pure_;
+
+const char* dns_over_https_mode_to_string(DnsOverHttpsMode p) _const_;
+DnsOverHttpsMode dns_over_https_mode_from_string(const char *s) _pure_;
 
 bool dns_server_address_valid(int family, const union in_addr_union *sa);
 

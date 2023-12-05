@@ -43,6 +43,7 @@
 #include "string-util.h"
 #include "utf8.h"
 
+
 #define SEND_TIMEOUT_USEC (200 * USEC_PER_MSEC)
 
 static int manager_process_link(sd_netlink *rtnl, sd_netlink_message *mm, void *userdata) {
@@ -609,6 +610,12 @@ int manager_new(Manager **ret) {
 
 #if ENABLE_DNS_OVER_TLS
         r = dnstls_manager_init(m);
+        if (r < 0)
+                return r;
+#endif
+
+#if ENABLE_DNS_OVER_HTTPS
+        r = doh_manager_init(m);
         if (r < 0)
                 return r;
 #endif
@@ -1587,6 +1594,18 @@ DnsOverTlsMode manager_get_dns_over_tls_mode(Manager *m) {
                 return m->dns_over_tls_mode;
 
         return DNS_OVER_TLS_NO;
+}
+
+DnsOverHttpsMode manager_get_dns_over_https_mode(Manager *m) {
+        assert(m);
+
+        return DNS_OVER_HTTPS_YES;
+
+        /* need conf file parser */
+        /* if (m->dns_over_https_mode != _DNS_OVER_HTTPS_MODE_INVALID) */
+        /*         return m->dns_over_https_mode; */
+
+        /* return DNS_OVER_HTTPS_NO; */
 }
 
 void manager_dnssec_verdict(Manager *m, DnssecVerdict verdict, const DnsResourceKey *key) {

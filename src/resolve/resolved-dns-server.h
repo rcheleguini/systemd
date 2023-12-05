@@ -15,6 +15,7 @@ typedef struct Link Link;
 typedef struct Manager Manager;
 
 #include "resolved-dnstls.h"
+#include "resolved-doh.h"
 
 typedef enum DnsServerType {
         DNS_SERVER_SYSTEM,

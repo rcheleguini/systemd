@@ -13,6 +13,7 @@
 #include "resolved-dns-cache.h"
 #include "resolved-dns-transaction.h"
 #include "resolved-dnstls.h"
+#include "resolved-doh.h"
 #include "resolved-llmnr.h"
 #include "string-table.h"
 
@@ -654,6 +655,7 @@ static int on_stream_packet(DnsStream *s, DnsPacket *p) {
 static uint16_t dns_transaction_port(DnsTransaction *t) {
         assert(t);
 
+        printf("\n dns_transacation_port...\n");
         if (t->server->port > 0)
                 return t->server->port;
 
@@ -691,6 +693,8 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
                         if (r < 0)
                                 return r;
                 }
+
+                printf("\n transport port is: %d\n", dns_transaction_port(t));
 
                 if (t->server->stream && (DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level) == t->server->stream->encrypted))
                         s = dns_stream_ref(t->server->stream);
@@ -755,6 +759,18 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
 
                         assert(t->server);
                         r = dnstls_stream_connect_tls(s, t->server);
+                        if (r < 0)
+                                return r;
+                }
+#endif
+
+#if ENABLE_DNS_OVER_HTTPS
+                printf("\n about to test feature level...\n");
+                if (t->scope->protocol == DNS_PROTOCOL_DNS &&
+                    DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level)) {
+
+                        assert(t->server);
+                        r = doh_stream_connect_tls(s, t->server);
                         if (r < 0)
                                 return r;
                 }
@@ -1421,8 +1437,12 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
 
         assert(t);
 
+
+        printf("\n feature level is: %d\n", t->current_feature_level);
+
         if (t->scope->protocol == DNS_PROTOCOL_DNS) {
 
+                printf("\n entered emit udp, dns protocol...\n");
                 r = dns_transaction_pick_server(t);
                 if (r < 0)
                         return r;
@@ -1443,6 +1463,8 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
 
                         /* Before we allocate a new UDP socket, let's process the graveyard a bit to free some fds */
                         manager_socket_graveyard_process(t->scope->manager);
+
+
 
                         fd = dns_scope_socket_udp(t->scope, t->server);
                         if (fd < 0)
@@ -1466,6 +1488,7 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
         } else
                 dns_transaction_close_connection(t, true);
 
+        /* printf("\n transport port is: %d\n", dns_transaction_port(t)); */
         r = dns_scope_emit_udp(t->scope, t->dns_udp_fd, t->server ? t->server->family : AF_UNSPEC, t->sent);
         if (r < 0)
                 return r;

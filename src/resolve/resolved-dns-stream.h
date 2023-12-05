@@ -14,6 +14,7 @@ typedef struct DnsStubListenerExtra DnsStubListenerExtra;
 
 #include "resolved-dns-packet.h"
 #include "resolved-dnstls.h"
+#include "resolved-doh.h"
 
 /* Various timeouts for establishing TCP connections. First the default time-out for that. */
 #define DNS_STREAM_DEFAULT_TIMEOUT_USEC (10 * USEC_PER_SEC)

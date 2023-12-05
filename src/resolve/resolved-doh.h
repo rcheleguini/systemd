@@ -13,7 +13,7 @@ typedef struct DnsHttpsServerData DnsHttpsServerData;
 typedef struct DnsHttpsStreamData DnsHttpsStreamData;
 typedef struct Manager Manager;
 
-#include "resolved-dnstls-openssl.h"
+#include "resolved-doh-openssl.h"
 
 #define DOH_STREAM_CLOSED 1
 

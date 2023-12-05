@@ -30,6 +30,7 @@ static int doh_flush_write_buffer(DnsStream *stream) {
 
 int doh_stream_connect_tls(DnsStream *stream, DnsServer *server) {
 
+        printf("\n doh_stream_connect_tls\n");
         return 0;
 }
 
@@ -67,6 +68,30 @@ void doh_server_free(DnsServer *server) {
 }
 
 int doh_manager_init(Manager *manager) {
+        printf("\n doh_manager_init\n");
+
+        int r;
+
+        assert(manager);
+
+        ERR_load_crypto_strings();
+        SSL_load_error_strings();
+
+        manager->doh_data.ctx = SSL_CTX_new(TLS_client_method());
+       if (!manager->doh_data.ctx)
+                return -ENOMEM;
+
+        r = SSL_CTX_set_min_proto_version(manager->doh_data.ctx, TLS1_2_VERSION);
+        if (r == 0)
+                return -EIO;
+
+        (void) SSL_CTX_set_options(manager->doh_data.ctx, SSL_OP_NO_COMPRESSION);
+
+        r = SSL_CTX_set_default_verify_paths(manager->doh_data.ctx);
+        if (r == 0)
+                return log_warning_errno(SYNTHETIC_ERRNO(EIO),
+                                         "Failed to load system trust store: %s",
+                                         ERR_error_string(ERR_get_error(), NULL));
 
         return 0;
 }
