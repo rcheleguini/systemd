@@ -702,6 +702,8 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
 
                 if (t->server->stream && (DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level) == t->server->stream->encrypted))
                         s = dns_stream_ref(t->server->stream);
+                else if (t->server->stream && (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level) == t->server->stream->encrypted_doh))
+                        s = dns_stream_ref(t->server->stream);
                 else {
                         printf("\n about to start tcp socket...\n");
                         fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa);

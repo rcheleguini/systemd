@@ -35,7 +35,7 @@ static int manager_add_dns_server_by_string(Manager *m, DnsServerType type, cons
 
 
 
-        word = strcpy(word, "8.8.8.8#dns.google");
+        /* word = strcpy(word, "8.8.8.8#dns.google"); */
         r = in_addr_port_ifindex_name_from_string_auto(word, &family, &address, &port, &ifindex, &server_name);
         if (r < 0)
                 return r;
@@ -60,7 +60,7 @@ static int manager_add_dns_server_by_string(Manager *m, DnsServerType type, cons
 
         printf("\n about to create new server\n");
         port = 443;
-        server_name = strcpy(server_name, "8.8.8.8");
+        /* server_name = strcpy(server_name, "8.8.8.8"); */
 
         return dns_server_new(m, NULL, type, NULL, family, &address, port, ifindex, server_name);
 }

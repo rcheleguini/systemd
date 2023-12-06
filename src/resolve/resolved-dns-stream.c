@@ -214,6 +214,11 @@ ssize_t dns_stream_writev(DnsStream *s, const struct iovec *iov, size_t iovcnt, 
                 return dnstls_stream_writev(s, iov, iovcnt);
 #endif
 
+#if ENABLE_DNS_OVER_HTTPS
+        if (s->encrypted_doh && !(flags & DNS_STREAM_WRITE_HTTPS_DATA))
+                return doh_stream_writev(s, iov, iovcnt);
+#endif
+
         if (s->tfo_salen > 0) {
                 struct msghdr hdr = {
                         .msg_iov = (struct iovec*) iov,
@@ -252,6 +257,12 @@ static ssize_t dns_stream_read(DnsStream *s, void *buf, size_t count) {
 #if ENABLE_DNS_OVER_TLS
         if (s->encrypted)
                 ss = dnstls_stream_read(s, buf, count);
+        else
+#endif
+
+#if ENABLE_DNS_OVER_HTTPS
+        if (s->encrypted_doh)
+                ss = doh_stream_read(s, buf, count);
         else
 #endif
         {
