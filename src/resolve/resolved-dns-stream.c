@@ -299,6 +299,23 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
 
         assert(s);
 
+#if ENABLE_DNS_OVER_HTTPS
+        if (s->encrypted_doh) {
+                printf("\n doh on_stream_io... \n");
+                r = doh_stream_on_io(s, revents);
+                if (r == DOH_STREAM_CLOSED)
+                        return 0;
+                if (r == -EAGAIN)
+                        return dns_stream_update_io(s);
+                if (r < 0)
+                        return dns_stream_complete(s, -r);
+
+                r = dns_stream_update_io(s);
+                if (r < 0)
+                        return r;
+        }
+#endif
+
 #if ENABLE_DNS_OVER_TLS
         if (s->encrypted) {
                 r = dnstls_stream_on_io(s, revents);

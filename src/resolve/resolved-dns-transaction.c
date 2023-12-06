@@ -464,6 +464,8 @@ static int dns_transaction_pick_server(DnsTransaction *t) {
         assert(t);
         assert(t->scope->protocol == DNS_PROTOCOL_DNS);
 
+        printf("\n entered transacation pick server...\n");
+
         /* Pick a DNS server and a feature level for it. */
 
         server = dns_scope_get_dns_server(t->scope);
@@ -673,6 +675,8 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
         assert(t);
         assert(t->sent);
 
+        printf("\n entered emit tcp...\n");
+
         dns_transaction_close_connection(t, true);
 
         switch (t->scope->protocol) {
@@ -698,8 +702,10 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
 
                 if (t->server->stream && (DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level) == t->server->stream->encrypted))
                         s = dns_stream_ref(t->server->stream);
-                else
+                else {
+                        printf("\n about to start tcp socket...\n");
                         fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa);
+                }
 
                 /* Lower timeout in DNS-over-TLS opportunistic mode. In environments where DoT is blocked
                  * without ICMP response overly long delays when contacting DoT servers are nasty, in
@@ -765,10 +771,11 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
 #endif
 
 #if ENABLE_DNS_OVER_HTTPS
-                printf("\n about to test feature level...\n");
+                printf("\n in tcp, about to start https stream...\n");
                 if (t->scope->protocol == DNS_PROTOCOL_DNS &&
-                    DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level)) {
+                    DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level)) {
 
+                        printf("\nconfirmed, about to connect tls...\n");
                         assert(t->server);
                         r = doh_stream_connect_tls(s, t->server);
                         if (r < 0)
@@ -1438,7 +1445,7 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
         assert(t);
 
 
-        printf("\n feature level is: %d\n", t->current_feature_level);
+
 
         if (t->scope->protocol == DNS_PROTOCOL_DNS) {
 
@@ -1447,11 +1454,21 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
                 if (r < 0)
                         return r;
 
+                printf("\n hey feature level is: %d\n", t->current_feature_level);
+
                 if (manager_server_is_stub(t->scope->manager, t->server))
                         return -ELOOP;
 
-                if (t->current_feature_level < DNS_SERVER_FEATURE_LEVEL_UDP || DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level))
+                printf("\n about to test doh is confirmed...\n");
+                if (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level)) {
+                        printf("\n forced doh confirmed, routing to tcp...\n");
                         return -EAGAIN; /* Sorry, can't do UDP, try TCP! */
+                }
+
+                if (t->current_feature_level < DNS_SERVER_FEATURE_LEVEL_UDP || DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level)) {
+                        printf("\n doh confirmed, routing to tcp...\n");
+                        return -EAGAIN; /* Sorry, can't do UDP, try TCP! */
+                }
 
                 if (!t->bypass && !dns_server_dnssec_supported(t->server) && dns_type_is_dnssec(dns_transaction_key(t)->type))
                         return -EOPNOTSUPP;

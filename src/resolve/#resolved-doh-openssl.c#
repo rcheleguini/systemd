@@ -83,7 +83,7 @@ int doh_stream_connect_tls(DnsStream *stream, DnsServer *server) {
 
         r = doh_flush_write_buffer(stream);
         if (r < 0 && r != -EAGAIN) {
-                SSL_free(TAKE_PTR(stream->doh_data.ssl));
+                SSL_free(TAKE_PTR(stream->doh_data.ssl));strea
                 return r;
         }
 
@@ -95,7 +95,6 @@ void doh_stream_free(DnsStream *stream) {
 }
 
 int doh_stream_on_io(DnsStream *stream, uint32_t revents) {
-        printf("\n doh_stream_on_io \n");
 
         return 0;
 }

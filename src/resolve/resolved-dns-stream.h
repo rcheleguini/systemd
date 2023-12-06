@@ -38,6 +38,7 @@ typedef enum DnsStreamType {
 } DnsStreamType;
 
 #define DNS_STREAM_WRITE_TLS_DATA 1
+#define DNS_STREAM_WRITE_HTTPS_DATA 1
 
 /* Streams are used by three subsystems:
  *
@@ -73,6 +74,11 @@ struct DnsStream {
         uint32_t dnstls_events;
 #endif
 
+#if ENABLE_DNS_OVER_HTTPS
+        DnsHttpsStreamData doh_data;
+        uint32_t doh_events;
+#endif
+
         sd_event_source *io_event_source;
         sd_event_source *timeout_event_source;
 
@@ -90,6 +96,9 @@ struct DnsStream {
 
         /* used when DNS-over-TLS is enabled */
         bool encrypted:1;
+
+        /* used when DNS-over-HTTPS is enabled */
+        bool encrypted_doh:1;
 
         DnsStubListenerExtra *stub_listener_extra;
 
