@@ -707,6 +707,12 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
                 else {
                         printf("\n about to start tcp socket...\n");
                         fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa);
+                        /* if (connect(fd, (struct sockaddr*)&sa , sizeof(sa)) < 0) { */
+                        /*         // Handle error */
+                        /*         perror("Error connecting to the server"); */
+                        /*         close(fd); */
+                        /*         return 1; */
+                        /* } */
                 }
 
                 /* Lower timeout in DNS-over-TLS opportunistic mode. In environments where DoT is blocked

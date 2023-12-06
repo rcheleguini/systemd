@@ -589,6 +589,7 @@ int manager_new(Manager **ret) {
                 .mdns_support = DEFAULT_MDNS_MODE,
                 .dnssec_mode = DEFAULT_DNSSEC_MODE,
                 .dns_over_tls_mode = DEFAULT_DNS_OVER_TLS_MODE,
+                .dns_over_https_mode = DEFAULT_DNS_OVER_HTTPS_MODE,
                 .enable_cache = DNS_CACHE_MODE_YES,
                 .dns_stub_listener_mode = DNS_STUB_LISTENER_YES,
                 .read_resolv_conf = true,
