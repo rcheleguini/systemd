@@ -23,3 +23,5 @@ struct DnsHttpsStreamData {
         BUF_MEM *write_buffer;
         size_t buffer_offset;
 };
+
+void ssl_with_fd(int sockfd);

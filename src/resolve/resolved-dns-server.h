@@ -77,7 +77,7 @@ struct DnsServer {
 #endif
 
 #if ENABLE_DNS_OVER_HTTPS
-        DnsHttpsServerData dnshttps_data;
+        DnsHttpsServerData doh_data;
 #endif
 
         DnsServerFeatureLevel verified_feature_level;

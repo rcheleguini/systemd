@@ -55,6 +55,12 @@ static int dns_stream_update_io(DnsStream *s) {
                 f = s->dnstls_events;
 #endif
 
+#if ENABLE_DNS_OVER_HTTPS
+        /* For handshake and clean closing purposes, HTTPS can override requested events */
+        if (s->doh_events != 0)
+                f = s->doh_events;
+#endif
+
         return sd_event_source_set_io_events(s->io_event_source, f);
 }
 
@@ -206,6 +212,8 @@ static int dns_stream_identify(DnsStream *s) {
 ssize_t dns_stream_writev(DnsStream *s, const struct iovec *iov, size_t iovcnt, int flags) {
         ssize_t m;
 
+        puts("dns_stream_writev...");
+
         assert(s);
         assert(iov);
 
@@ -283,6 +291,8 @@ static int on_stream_timeout(sd_event_source *es, usec_t usec, void *userdata) {
 static DnsPacket *dns_stream_take_read_packet(DnsStream *s) {
         assert(s);
 
+        puts("dns_stream_take_read_packet...");
+
         /* Note, dns_stream_update() should be called after this is called. When this is called, the
          * stream may be already full and the EPOLLIN flag is dropped from the stream IO event source.
          * Even this makes a room to read in the stream, this does not call dns_stream_update(), hence
@@ -350,9 +360,13 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                         return dns_stream_complete(s, -r);
         }
 
+        puts("about check EPOLLOUT and EPOLLIN events");
+
         if ((revents & EPOLLOUT) &&
             s->write_packet &&
             s->n_written < sizeof(s->write_size) + s->write_packet->size) {
+
+                puts("EPOLLOUT");
 
                 struct iovec iov[] = {
                         IOVEC_MAKE(&s->write_size, sizeof(s->write_size)),
@@ -382,6 +396,7 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                (!s->read_packet ||
                 s->n_read < sizeof(s->read_size) + s->read_packet->size)) {
 
+                puts("EPOLLIN");
                 if (s->n_read < sizeof(s->read_size)) {
                         ssize_t ss;
 
@@ -597,6 +612,8 @@ int dns_stream_new(
 
 int dns_stream_write_packet(DnsStream *s, DnsPacket *p) {
         int r;
+
+        puts("dns_stream_write_packet...");
 
         assert(s);
         assert(p);
