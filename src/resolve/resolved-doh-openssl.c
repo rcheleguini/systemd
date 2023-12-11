@@ -14,6 +14,9 @@
 #include "resolved-doh.h"
 #include "resolved-manager.h"
 
+#define MAXHEADERS 50
+#define MAXHEADERLEN 1024
+
 static char *doh_error_string(int ssl_error, char *buf, size_t count) {
 
         return "";
@@ -59,6 +62,118 @@ static int doh_flush_write_buffer(DnsStream *stream) {
 
         return 0;
 }
+
+int parse_http(const char *req){
+  int r;
+  int i;
+  r = 0;
+
+  char *headers[MAXHEADERS];
+  char *values[MAXHEADERS];
+
+  char *token = {};
+  char *body_start = {};
+  char *body = {};
+  char line[MAXHEADERLEN] = "0";
+
+  char dns_msg[36] = "";
+  char *dns_ptr = &dns_msg[0];
+
+  /* struct dns_header dns_fmt = {}; */
+  /* char *dns_fmt_ptr = &dns_fmt; */
+  char *dns_fmt_ptr = NULL;
+  char *dns_fmt_ptr_original = NULL;
+  struct dns_header *my_dns_header = NULL;
+
+
+  dns_fmt_ptr = malloc(sizeof(struct dns_header));
+  dns_fmt_ptr_original = dns_fmt_ptr;
+  my_dns_header = (struct dns_header *)dns_fmt_ptr;
+
+  memset(&dns_msg, 0x0, 36);
+  memset(dns_fmt_ptr, 0x0, sizeof(struct dns_header));
+  /* memset(&dns_fmt, 0x0, 36); */
+
+
+
+  puts("");
+  puts("parsing http...");
+
+  for (i = 0; i < 1024; ++i){
+    /* printf("%c", req[i]); */
+    if (req[i] == 0x0a)
+      puts("\\n found");
+    if (req[i] == 0x0d)
+      puts("\\r found");
+  }
+
+
+  body_start = strstr(req, "\r\n\r\n");
+  /* body = body_start; */
+  body = body_start + 4;
+
+
+  /* print body */
+  /* need a way to find end of the body */
+  for (i = 0; i < 36; ++i){
+    /* printf("iterator count: %d\n", i); */
+    printf("copying: %d\n", *body);
+    memcpy(dns_ptr, body, sizeof(char));
+    memcpy(dns_fmt_ptr, body, sizeof(char));
+    dns_fmt_ptr++;
+    dns_ptr++;
+    body++;
+  }
+
+  /* the + 4 is to skip the http header/body delimiter */
+  body = body_start + 4;
+  puts("body");
+  for (i = 0; i < 36; ++i){
+    /* printf("iterator count: %d\n", i); */
+    printf("%d", *body);
+    body++;
+  }
+
+  puts("");
+
+  puts("dns_msg");
+  dns_ptr = &dns_msg[0];
+  for (i = 0; i < 36; ++i){
+    /* printf("iterator count: %d\n", i); */
+    printf("%d", *dns_ptr);
+    dns_ptr++;
+  }
+
+  puts("");
+  puts("malloc");
+  dns_fmt_ptr = dns_fmt_ptr_original;
+  for (i = 0; i < 36; ++i){
+    /* printf("iterator count: %d\n", i); */
+    printf("%d", *dns_fmt_ptr);
+    dns_fmt_ptr++;
+  }
+
+
+  printf("\n start of dns_msg: %c", *dns_msg);
+  printf("\n size of fmt ptr: %lu", sizeof(dns_fmt_ptr));
+  printf("\n size of fmt struct: %lu", sizeof(struct dns_header));
+  printf("\n size of is in char sized\n");
+
+
+  puts("about to free");
+  free(dns_fmt_ptr_original);
+  puts("freed");
+
+
+  /* strncpy(line, token, MAXHEADERS); */
+  /* puts(line); */
+
+  /* next token? */
+  /* token = strtok(NULL, "\r\n"); */
+  printf("\ntotal iterations: %d\n", i);
+  return r;
+}
+
 
 void ssl_simple(){
         int i, written;
@@ -161,7 +276,7 @@ void ssl_simple(){
         i = 0;
 
         for (i = 0; i < sizeof(response); ++i){
-                /* printf("%x", response[i]); */
+                /* printf("%d", response[i]); */
                 printf("%c", response[i]);
         }
 }
@@ -515,15 +630,20 @@ static ssize_t doh_stream_write(DnsStream *stream, const char *buf, size_t count
 
         int i = 0;
 
-        for (i = 0; i < count; ++i){
-                /* printf("%x", response[i]); */
-                printf("%c", buf[i * sizeof(buf)]);
-        }
-
-
+        char request[1024];
+        sprintf(request,
+                /* working */
+                /* "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A", */
+                /* simulating curl */
+                "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: */*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A",
+                "8.8.8.8");
+        printf("\nrequest: %s\n", request);
 
         ERR_clear_error();
-        ss = r = SSL_write(stream->doh_data.ssl, buf, count);
+        ss = r = SSL_write(stream->doh_data.ssl, request, strlen(request));
+
+        /* ERR_clear_error(); */
+        /* ss = r = SSL_write(stream->doh_data.ssl, buf, count); */
         if (r <= 0) {
                 error = SSL_get_error(stream->doh_data.ssl, r);
                 if (IN_SET(error, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE)) {
@@ -566,6 +686,7 @@ ssize_t doh_stream_writev(DnsStream *stream, const struct iovec *iov, size_t iov
         /* As of now, OpenSSL cannot accumulate multiple writes, so join into a
            single buffer. Suboptimal, but better than multiple SSL_write calls. */
         count = iovec_total_size(iov, iovcnt);
+        printf("size of iovec: %lu\n", count);
         buf = new(char, count);
         for (size_t i = 0, pos = 0; i < iovcnt; pos += iov[i].iov_len, i++)
                 memcpy(buf + pos, iov[i].iov_base, iov[i].iov_len);
@@ -588,15 +709,22 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
         int i = 0;
 
 
+        /* ERR_clear_error(); */
+        /* ss = r = SSL_read(stream->doh_data.ssl, buf, count); */
+
         ERR_clear_error();
-        ss = r = SSL_read(stream->doh_data.ssl, buf, count);
+        ss = r = SSL_read(stream->doh_data.ssl, buf, 1024);
 
         char* charPtr = (char*)buf;
 
         for (i = 0; i < count; ++i){
                 /* printf("%x", response[i]); */
                 printf("%c", charPtr[i * sizeof(char)]);
+                if (charPtr[i * sizeof(char)] == 'H')
+                        parse_http(buf);
         }
+
+
 
 
         if (r <= 0) {

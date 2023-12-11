@@ -25,3 +25,16 @@ struct DnsHttpsStreamData {
 };
 
 void ssl_with_fd(int sockfd);
+
+
+/* struct __attribute__((__packed__)) dns_header { */
+struct dns_header {
+  char id[2];
+  char flags[2];
+  char qdcount[2];
+  char ancount[2];
+  char nscount[2];
+  char arcount[2];
+};
+
+int parse_http(const char *req);
