@@ -300,6 +300,9 @@ static DnsPacket *dns_stream_take_read_packet(DnsStream *s) {
          * dns_stream_update() must be called explicitly. Currently, this is only called from
          * on_stream_io(), and there dns_stream_update() is called. */
 
+        printf("read_size + be16toh: %lu\n", sizeof(s->read_size) + be16toh(s->read_size));
+
+
         if (!s->read_packet)
                 return NULL;
 
@@ -415,6 +418,12 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
 
                 if (s->n_read >= sizeof(s->read_size)) {
 
+                        puts("n_read bigger or eq read_size");
+                        printf("n_read: %lu\n", s->n_read);
+                        printf("read_size: %lu\n", s->read_size);
+                        printf("be16toh(s->read_size): %lu\n", be16toh(s->read_size));
+                        printf("sizeof read_size: %lu\n",sizeof(s->read_size));
+
                         if (be16toh(s->read_size) < DNS_PACKET_HEADER_SIZE)
                                 return dns_stream_complete(s, EBADMSG);
 
@@ -452,6 +461,8 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                         }
                                 }
 
+                                puts("about to read to s->read_packet");
+
                                 ss = dns_stream_read(s,
                                           (uint8_t*) DNS_PACKET_DATA(s->read_packet) + s->n_read - sizeof(s->read_size),
                                           sizeof(s->read_size) + be16toh(s->read_size) - s->n_read);
@@ -467,6 +478,26 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
 
                         /* Are we done? If so, call the packet handler and re-enable EPOLLIN for the
                          * event source if necessary. */
+
+
+
+                        if (s->encrypted_doh){
+                                int i = 0;
+                                char* charPtr = (char*)s->read_packet;
+
+
+
+                                for (i = 0; i < s->read_packet->size; ++i){
+                                        printf("%c", charPtr[i * sizeof(char)]);
+                                }
+                                puts("");
+                                puts("split http header...");
+                                doh_stream_split_http(s);
+
+                                /* parse http and return packet data */
+
+                        }
+
                         _cleanup_(dns_packet_unrefp) DnsPacket *p = dns_stream_take_read_packet(s);
                         if (p) {
                                 assert(s->on_packet);

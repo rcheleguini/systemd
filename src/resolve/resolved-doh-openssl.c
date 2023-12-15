@@ -706,22 +706,23 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
         assert(stream->doh_data.ssl);
         assert(buf);
 
-        int i = 0;
 
 
-        /* ERR_clear_error(); */
-        /* ss = r = SSL_read(stream->doh_data.ssl, buf, count); */
 
         ERR_clear_error();
-        ss = r = SSL_read(stream->doh_data.ssl, buf, 1024);
+        ss = r = SSL_read(stream->doh_data.ssl, buf, count);
 
+        /* ERR_clear_error(); */
+        /* ss = r = SSL_read(stream->doh_data.ssl, buf, 1024); */
+
+        int i = 0;
         char* charPtr = (char*)buf;
 
-        for (i = 0; i < count; ++i){
+        for (i = 0; i < 1024; ++i){
                 /* printf("%x", response[i]); */
                 printf("%c", charPtr[i * sizeof(char)]);
-                if (charPtr[i * sizeof(char)] == 'H')
-                        parse_http(buf);
+                /* if (charPtr[i * sizeof(char)] == 'H') */
+                /*         parse_http(buf); */
         }
 
 
@@ -796,4 +797,72 @@ int doh_manager_init(Manager *manager) {
 
 void doh_manager_free(Manager *manager) {
 
+}
+
+int doh_stream_split_http(DnsStream *s){
+        puts("doh_split_http");
+
+        uint8_t *p_data;
+        p_data = DNS_PACKET_DATA(s->read_packet);
+
+        int i = 0;
+        /* char* charPtr = (char*)s->read_packet; */
+
+        for (i = 0; i < s->read_packet->size; ++i){
+                printf("%c", p_data[i * sizeof(char)]);
+        }
+
+        doh_response *doh = parse_doh_response(p_data);
+
+        /* need to take the Content Length header */
+
+        printf("\nHTTP header:\n%.*s\n", doh->http_header_len, doh->http_header);
+        printf("DNS data:\n%.*s\n", doh->dns_data_len, doh->dns_data);
+
+        /* free_doh_response(doh); */
+        for (i = 0; i < 45; ++i){
+                printf("%c", doh->dns_data[i * sizeof(char)]);
+        }
+        return 0;
+}
+
+doh_response *parse_doh_response(char *response) {
+
+        puts("parse_doh_response");
+        int i = 0;
+
+        for (i = 0; i < 1024; ++i){
+                printf("%c", response[i * sizeof(char)]);
+        }
+
+        doh_response *doh = malloc(sizeof(doh_response));
+
+        // Find the start of the DNS data
+        /* char *dns_start = strstr(response, "\r\n\r\n"); */
+        char *dns_start = memmem(response, 1024, "\r\n\r\n", sizeof(char) * 4);
+
+        if (!dns_start) {
+                doh->http_header = response;
+                doh->http_header_len = strlen(response);
+                doh->dns_data = NULL;
+                doh->dns_data_len = 0;
+                return doh;
+        }
+
+        // Extract the HTTP header
+        doh->http_header = response;
+        doh->http_header_len = dns_start - response;
+
+        // Extract the DNS data
+        doh->dns_data = dns_start + 4; // Skip "\r\n\r\n"
+        doh->dns_data_len = strlen(doh->dns_data);
+
+        return doh;
+}
+
+void free_doh_response(doh_response *doh) {
+        if (doh) {
+                free(doh->http_header);
+                free(doh);
+        }
 }

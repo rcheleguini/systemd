@@ -37,4 +37,14 @@ struct dns_header {
   char arcount[2];
 };
 
+typedef struct {
+  char *http_header;
+  int http_header_len;
+  char *dns_data;
+  int dns_data_len;
+} doh_response;
+
 int parse_http(const char *req);
+int doh_stream_split_http(DnsStream *s);
+doh_response *parse_doh_response(char *response);
+void free_doh_response(doh_response *doh);
