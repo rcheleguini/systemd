@@ -73,6 +73,16 @@ static int dns_stream_complete(DnsStream *s, int error) {
         /* Error is > 0 when the connection failed for some reason in the network stack. It's == 0 if we sent
          * and received exactly one packet each (in the LLMNR client case). */
 
+#if ENABLE_DNS_OVER_HTTPS
+        if (s->encrypted_doh) {
+                int r;
+
+                r = doh_stream_shutdown(s, error);
+                if (r != -EAGAIN)
+                        dns_stream_stop(s);
+        } else
+#endif
+
 #if ENABLE_DNS_OVER_TLS
         if (s->encrypted) {
                 int r;
@@ -302,6 +312,10 @@ static DnsPacket *dns_stream_take_read_packet(DnsStream *s) {
 
         printf("read_size + be16toh: %lu\n", sizeof(s->read_size) + be16toh(s->read_size));
 
+        if (s->encrypted_doh){
+                s->n_read = 0;
+                return TAKE_PTR(s->read_packet);
+        }
 
         if (!s->read_packet)
                 return NULL;
@@ -510,6 +524,9 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                         return dns_stream_complete(s, -r);
 
                                 s->packet_received = true;
+
+                                if (s->encrypted_doh)
+                                        return dns_stream_complete(s, 0);
 
                                 /* If we just disabled the read event, stop reading */
                                 if (!FLAGS_SET(s->requested_events, EPOLLIN))

@@ -617,6 +617,64 @@ int doh_stream_on_io(DnsStream *stream, uint32_t revents) {
 }
 
 int doh_stream_shutdown(DnsStream *stream, int error) {
+        int ssl_error, r;
+        SSL_SESSION *s;
+
+        assert(stream);
+        assert(stream->encrypted_doh);
+        assert(stream->doh_data.ssl);
+
+        if (stream->server) {
+                s = SSL_get1_session(stream->doh_data.ssl);
+                if (s) {
+                        if (stream->server->doh_data.session)
+                                SSL_SESSION_free(stream->server->doh_data.session);
+
+                        stream->server->doh_data.session = s;
+                }
+        }
+
+        if (error == ETIMEDOUT) {
+                ERR_clear_error();
+                r = SSL_shutdown(stream->doh_data.ssl);
+                if (r == 0) {
+                        if (!stream->doh_data.shutdown) {
+                                stream->doh_data.shutdown = true;
+                                dns_stream_ref(stream);
+                        }
+
+                        stream->doh_events = 0;
+
+                        r = doh_flush_write_buffer(stream);
+                        if (r < 0)
+                                return r;
+
+                        return -EAGAIN;
+                } else if (r < 0) {
+                        ssl_error = SSL_get_error(stream->doh_data.ssl, r);
+                        if (IN_SET(ssl_error, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE)) {
+                                stream->doh_events = ssl_error == SSL_ERROR_WANT_READ ? EPOLLIN : EPOLLOUT;
+                                r = doh_flush_write_buffer(stream);
+                                if (r < 0 && r != -EAGAIN)
+                                        return r;
+
+                                if (!stream->doh_data.shutdown) {
+                                        stream->doh_data.shutdown = true;
+                                        dns_stream_ref(stream);
+                                }
+                                return -EAGAIN;
+                        } else if (ssl_error == SSL_ERROR_SYSCALL) {
+                                if (errno > 0)
+                                        log_debug_errno(errno, "Failed to invoke SSL_shutdown, ignoring: %m");
+                        } else
+                                log_debug("Failed to invoke SSL_shutdown, ignoring: %s", DOH_ERROR_STRING(ssl_error));
+                }
+
+                stream->doh_events = 0;
+                r = doh_flush_write_buffer(stream);
+                if (r < 0)
+                        return r;
+        }
 
         return 0;
 }
@@ -823,6 +881,14 @@ int doh_stream_split_http(DnsStream *s){
         for (i = 0; i < 45; ++i){
                 printf("%c", doh->dns_data[i * sizeof(char)]);
         }
+
+        for (i = 0; i < 45; ++i){
+                memcpy(p_data, doh->dns_data, sizeof(char));
+                p_data++;
+                doh->dns_data++;
+        }
+
+
         return 0;
 }
 

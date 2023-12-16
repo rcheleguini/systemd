@@ -504,6 +504,8 @@ static void dns_transaction_retry(DnsTransaction *t, bool next_server) {
 
         assert(t);
 
+        puts("dns_transaction_retry...");
+
         /* Retries the transaction as it is, possibly on a different server */
 
         if (next_server && t->scope->protocol == DNS_PROTOCOL_DNS)
@@ -591,7 +593,8 @@ static int dns_transaction_on_stream_packet(DnsTransaction *t, DnsStream *s, Dns
 
         encrypted = s->encrypted;
 
-        dns_transaction_close_connection(t, true);
+        /* if(p) */
+        /*         dns_transaction_close_connection(t, false); */
 
         if (dns_packet_validate_reply(p) <= 0) {
                 log_debug("Invalid TCP reply packet.");
@@ -644,7 +647,11 @@ static int on_stream_packet(DnsStream *s, DnsPacket *p) {
         assert(s->manager);
         assert(p);
 
-        t = hashmap_get(s->manager->dns_transactions, UINT_TO_PTR(DNS_PACKET_ID(p)));
+        int p_id = DNS_PACKET_ID(p);
+        int *pp_id = &p_id;
+
+        /* t = hashmap_get(s->manager->dns_transactions, UINT_TO_PTR(DNS_PACKET_ID(p))); */
+        t = s->transactions;
         if (t && t->stream == s) /* Validate that the stream we got this on actually is the stream the
                                   * transaction was using. */
                 return dns_transaction_on_stream_packet(t, s, p);
@@ -1061,6 +1068,10 @@ void dns_transaction_process_reply(DnsTransaction *t, DnsPacket *p, bool encrypt
         assert(t->scope);
         assert(t->scope->manager);
 
+        puts("packet data");
+        uint8_t *p_data = DNS_PACKET_DATA(p);
+
+
         if (t->state != DNS_TRANSACTION_PENDING)
                 return;
 
@@ -1135,11 +1146,12 @@ void dns_transaction_process_reply(DnsTransaction *t, DnsPacket *p, bool encrypt
                         return;
                 }
 
-                if (DNS_PACKET_ID(p) != t->id) {
-                        /* Not the reply to our query? Somebody must be fucking with us */
-                        dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY);
-                        return;
-                }
+                /* skip this in https */
+                /* if (DNS_PACKET_ID(p) != t->id) { */
+                /*         /\* Not the reply to our query? Somebody must be fucking with us *\/ */
+                /*         dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY); */
+                /*         return; */
+                /* } */
         }
 
         switch (t->scope->protocol) {
@@ -1258,6 +1270,7 @@ void dns_transaction_process_reply(DnsTransaction *t, DnsPacket *p, bool encrypt
                 }
         }
 
+        puts("after emit tcp 2...");
         if (retry_with_tcp) {
                 r = dns_transaction_emit_tcp(t);
                 if (r == -ESRCH) {
@@ -1523,6 +1536,8 @@ static int on_transaction_timeout(sd_event_source *s, usec_t usec, void *userdat
         assert(s);
 
         t->seen_timeout = true;
+
+        puts("on_transaction_timeout");
 
         if (t->initial_jitter_scheduled && !t->initial_jitter_elapsed) {
                 log_debug("Initial jitter phase for transaction %" PRIu16 " elapsed.", t->id);
@@ -2132,6 +2147,7 @@ int dns_transaction_go(DnsTransaction *t) {
                 if (IN_SET(r, -EMSGSIZE, -EAGAIN, -EPERM))
                         r = dns_transaction_emit_tcp(t);
         }
+        puts("after emit tcp 1...");
         if (r == -ELOOP) {
                 if (t->scope->protocol != DNS_PROTOCOL_DNS)
                         return r;
