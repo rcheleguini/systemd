@@ -59,6 +59,7 @@ struct DnsTransaction {
 
         DnsPacket *sent, *received;
 
+
         DnsAnswer *answer;
         int answer_rcode;
         DnssecResult answer_dnssec_result;
@@ -217,3 +218,5 @@ DnsTransactionSource dns_transaction_source_from_string(const char *s) _pure_;
                                      (p) == DNS_PROTOCOL_MDNS ?         \
                                      MDNS_TRANSACTION_ATTEMPTS_MAX :    \
                                      DNS_TRANSACTION_ATTEMPTS_MAX)
+
+int doh_packet_to_base64url(DnsTransaction *t);

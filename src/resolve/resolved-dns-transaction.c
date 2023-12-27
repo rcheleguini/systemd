@@ -17,6 +17,8 @@
 #include "resolved-llmnr.h"
 #include "string-table.h"
 
+
+
 #define TRANSACTIONS_MAX 4096
 #define TRANSACTION_TCP_TIMEOUT_USEC (10U*USEC_PER_SEC)
 
@@ -807,7 +809,22 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
         t->stream = TAKE_PTR(s);
         LIST_PREPEND(transactions_by_stream, t->stream->transactions, t);
 
+#if ENABLE_DNS_OVER_HTTPS
+        if (t->scope->protocol == DNS_PROTOCOL_DNS &&
+            DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level)) {
+                r = doh_packet_to_base64url(t);
+                if (r < 0) {
+                        dns_transaction_close_connection(t, /* use_graveyard= */ false);
+                        return r;
+                }
+        }
+#endif
+
+
+
+
         r = dns_stream_write_packet(t->stream, t->sent);
+
         if (r < 0) {
                 dns_transaction_close_connection(t, /* use_graveyard= */ false);
                 return r;
@@ -2126,6 +2143,7 @@ int dns_transaction_go(DnsTransaction *t) {
         r = dns_transaction_make_packet(t);
         if (r < 0)
                 return r;
+
 
         if (t->scope->protocol == DNS_PROTOCOL_LLMNR &&
             (dns_name_endswith(dns_resource_key_name(dns_transaction_key(t)), "in-addr.arpa") > 0 ||

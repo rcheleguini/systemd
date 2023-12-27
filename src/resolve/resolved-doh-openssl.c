@@ -13,9 +13,13 @@
 #include "resolved-dns-stream.h"
 #include "resolved-doh.h"
 #include "resolved-manager.h"
+#include "hexdecoct.h"
 
 #define MAXHEADERS 50
 #define MAXHEADERLEN 1024
+
+#define BASE64URL_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
 
 static char *doh_error_string(int ssl_error, char *buf, size_t count) {
 
@@ -682,23 +686,28 @@ int doh_stream_shutdown(DnsStream *stream, int error) {
 static ssize_t doh_stream_write(DnsStream *stream, const char *buf, size_t count) {
 
         printf("\n doh_stream_write\n");
+        printf("to stream: %p\n", stream);
 
         int error, r;
         ssize_t ss;
 
         int i = 0;
 
-        char request[1024];
-        sprintf(request,
-                /* working */
-                /* "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A", */
-                /* simulating curl */
-                "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: */*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A",
-                "8.8.8.8");
-        printf("\nrequest: %s\n", request);
+        /* char request[1024]; */
+        /* sprintf(request, */
+        /*         /\* working *\/ */
+        /*         /\* "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A", *\/ */
+        /*         /\* simulating curl *\/ */
+        /*         "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: *\/\*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A", */
+        /*         "8.8.8.8"); */
+        /* printf("\nrequest: %s\n", request); */
+        /* ERR_clear_error(); */
+        /* ss = r = SSL_write(stream->doh_data.ssl, request, strlen(request)); */
+
+        /* printf("\nrequest: %s\n", stream->doh_sent); */
 
         ERR_clear_error();
-        ss = r = SSL_write(stream->doh_data.ssl, request, strlen(request));
+        ss = r = SSL_write(stream->doh_data.ssl, stream->doh_sent, 512);
 
         /* ERR_clear_error(); */
         /* ss = r = SSL_write(stream->doh_data.ssl, buf, count); */
@@ -728,6 +737,8 @@ static ssize_t doh_stream_write(DnsStream *stream, const char *buf, size_t count
 ssize_t doh_stream_writev(DnsStream *stream, const struct iovec *iov, size_t iovcnt) {
 
         printf("\n doh_stream_writev\n");
+        printf("to stream: %p\n", stream);
+        printf("request: %s\n", stream->doh_sent);
 
         _cleanup_free_ char *buf = NULL;
         size_t count;
@@ -877,16 +888,22 @@ int doh_stream_split_http(DnsStream *s){
         printf("\nHTTP header:\n%.*s\n", doh->http_header_len, doh->http_header);
         printf("DNS data:\n%.*s\n", doh->dns_data_len, doh->dns_data);
 
-        /* free_doh_response(doh); */
-        for (i = 0; i < 45; ++i){
-                printf("%c", doh->dns_data[i * sizeof(char)]);
-        }
+        /* need rework here, pass the packet to the rest of stack */
+        /* need to overwrite read_packet with the actual dns answer */
 
-        for (i = 0; i < 45; ++i){
-                memcpy(p_data, doh->dns_data, sizeof(char));
-                p_data++;
-                doh->dns_data++;
-        }
+        memcpy(p_data, doh->dns_data, 56);
+
+
+        /* /\* free_doh_response(doh); *\/ */
+        /* for (i = 0; i < 45; ++i){ */
+        /*         printf("%c", doh->dns_data[i * sizeof(char)]); */
+        /* } */
+
+        /* for (i = 0; i < 45; ++i){ */
+        /*         memcpy(p_data, doh->dns_data, sizeof(char)); */
+        /*         p_data++; */
+        /*         doh->dns_data++; */
+        /* } */
 
 
         return 0;
@@ -931,4 +948,171 @@ void free_doh_response(doh_response *doh) {
                 free(doh->http_header);
                 free(doh);
         }
+}
+
+static void maybe_line_break(char **x, char *start, size_t line_break) {
+        size_t n;
+
+        assert(x);
+        assert(*x);
+        assert(start);
+        assert(*x >= start);
+
+        if (line_break == SIZE_MAX)
+                return;
+
+        n = *x - start;
+
+        if (n % (line_break + 1) == line_break)
+                *((*x)++) = '\n';
+}
+
+ssize_t base64mem_full(
+                const void *p,
+                size_t l,
+                size_t line_break,
+                char **ret) {
+
+        const uint8_t *x;
+        char *b, *z;
+        size_t m;
+
+        assert(p || l == 0);
+        assert(line_break > 0);
+        assert(ret);
+
+        /* three input bytes makes four output bytes, padding is added so we must round up */
+        m = 4 * (l + 2) / 3 + 1;
+        if (line_break != SIZE_MAX)
+                m += m / line_break;
+
+        z = b = malloc(m);
+        if (!b)
+                return -ENOMEM;
+
+        for (x = p; x && x < (const uint8_t*) p + (l / 3) * 3; x += 3) {
+                /* x[0] == XXXXXXXX; x[1] == YYYYYYYY; x[2] == ZZZZZZZZ */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char(x[0] >> 2);                    /* 00XXXXXX */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char((x[0] & 3) << 4 | x[1] >> 4);  /* 00XXYYYY */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char((x[1] & 15) << 2 | x[2] >> 6); /* 00YYYYZZ */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char(x[2] & 63);                    /* 00ZZZZZZ */
+        }
+
+        switch (l % 3) {
+        case 2:
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char(x[0] >> 2);                   /* 00XXXXXX */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char((x[0] & 3) << 4 | x[1] >> 4); /* 00XXYYYY */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char((x[1] & 15) << 2);            /* 00YYYY00 */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = '=';
+                break;
+
+        case 1:
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char(x[0] >> 2);        /* 00XXXXXX */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = urlsafe_base64char((x[0] & 3) << 4);  /* 00XX0000 */
+                maybe_line_break(&z, b, line_break);
+                *(z++) = '=';
+                maybe_line_break(&z, b, line_break);
+                *(z++) = '=';
+                break;
+        }
+
+        *z = 0;
+        *ret = b;
+
+        assert(z >= b); /* Let static analyzers know that the answer is non-negative. */
+        return z - b;
+}
+
+
+// Function to remove trailing '=' characters from a Base64url-encoded string
+void remove_padding(char *str) {
+    size_t len = strlen(str);
+
+    while (len > 0 && str[len - 1] == '=') {
+        str[--len] = '\0';
+    }
+}
+
+/* should take the packet wire format and construct a http request*/
+int doh_packet_to_base64url(DnsTransaction *t){
+        printf("\n in tcp, about to make base64url...\n");
+
+        DnsPacketHeader *p_header = DNS_PACKET_HEADER(t->sent);
+        uint8_t *p_data = DNS_PACKET_DATA(t->sent);
+        uint16_t p_id = DNS_PACKET_ID(t->sent);
+
+        uint16_t i = 0;
+
+        /* struct DohRequest get_request; */
+
+
+        /* puts("zeroing id..."); */
+        p_data[0] = 0;
+        p_data[1] = 0;
+
+        /* puts("trying to remove EDNS..."); */
+        /* /\* p_data[EDNS_OFFSET + 2] = 0x00;  // Set OPT Length to 0 *\/ */
+
+        /* unsigned char *flags_byte = p_data + 9; */
+        /* *flags_byte &= ~0x80; */
+
+
+        /* packet_length -= EDNS_LENGTH;   // Adjust packet length */
+
+
+        p_id = DNS_PACKET_ID(t->sent);
+
+        _cleanup_free_ char *doh_url = NULL;
+        /* doh_url =  base32hexmem(p_data, 64, false); */
+
+        /* size_t r = base64mem_full(p_data, 64, SIZE_MAX, &doh_url); */
+
+        puts("");
+
+        // Convert binary data to Base64
+        // 40 bytes is the packet size in wireshark
+        int r = base64mem_full(p_data, 40, 56, &doh_url);
+        remove_padding(doh_url);
+
+        /* forcing url, testing encoding */
+        /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAABAAEAACkFwAAAAAAAAAo"); */
+        /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAABAAEAACkFwAAAAAAAAA"); */
+
+
+
+        char get[] = "GET /dns-query?dns=";
+        char headers[] = " HTTP/1.1\x0D\x0AHost: 8.8.8.8\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: */*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A";
+        char get_request[512] = "";
+
+        strcpy(get_request, get);
+        strcat(get_request, doh_url);
+        strcat(get_request, headers);
+
+
+
+        /* memset(&get_request, 0x0, sizeof(struct DohRequest)); */
+        /* strcpy(get_request.get, "GET /dns-query?dns="); */
+        /* strcpy(get_request.data, doh_url); */
+        /* strcpy(get_request.headers, "HTTP/1.1\x0D\x0AHost: %s\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: *\/\*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A"); */
+
+        /* todo construct t->sent_url and remove the hard corded url in write() */
+
+        puts(get_request);
+        printf("assigning request to stream: %p\n", t->stream);
+        strcpy(t->stream->doh_sent, get_request);
+        /* t->stream->write_packet = (struct DnsPacket *)&get_request; */
+        /* t->stream->write_packet->size = sizeof(get_request); */
+
+
+        return 0;
 }

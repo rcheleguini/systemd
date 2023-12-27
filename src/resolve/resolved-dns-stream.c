@@ -223,6 +223,8 @@ ssize_t dns_stream_writev(DnsStream *s, const struct iovec *iov, size_t iovcnt, 
         ssize_t m;
 
         puts("dns_stream_writev...");
+        printf("to stream: %p\n", s);
+        printf("request: %s\n", s->doh_sent);
 
         assert(s);
         assert(iov);

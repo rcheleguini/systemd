@@ -615,6 +615,9 @@ int dns_server_adjust_opt(DnsServer *server, DnsPacket *packet, DnsServerFeature
 
         edns_do = level >= DNS_SERVER_FEATURE_LEVEL_DO;
 
+        /* todo fix here for doh dns over https */
+        edns_do = false;
+
         udp_size = udp_header_size(server->family);
 
         if (in_addr_is_localhost(server->family, &server->address) > 0)

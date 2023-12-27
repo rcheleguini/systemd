@@ -8,6 +8,7 @@
 #include <openssl/ssl.h>
 #include <stdbool.h>
 
+
 struct DnsHttpsManagerData {
         SSL_CTX *ctx;
 };
@@ -48,3 +49,6 @@ int parse_http(const char *req);
 int doh_stream_split_http(DnsStream *s);
 doh_response *parse_doh_response(char *response);
 void free_doh_response(doh_response *doh);
+char *base64url_encode_byte_by_byte(const unsigned char *data, size_t len);
+char *base64url_encode(const uint8_t *data, size_t len);
+void remove_padding(char *str);

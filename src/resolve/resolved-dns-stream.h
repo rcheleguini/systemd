@@ -77,6 +77,7 @@ struct DnsStream {
 #if ENABLE_DNS_OVER_HTTPS
         DnsHttpsStreamData doh_data;
         uint32_t doh_events;
+        char doh_sent[524];
 #endif
 
         sd_event_source *io_event_source;
