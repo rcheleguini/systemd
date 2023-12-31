@@ -39,6 +39,7 @@ struct dns_header {
 };
 
 typedef struct {
+  char *http_status;
   char *http_header;
   int http_header_len;
   char *dns_data;

@@ -789,7 +789,8 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
 
         for (i = 0; i < 1024; ++i){
                 /* printf("%x", response[i]); */
-                printf("%c", charPtr[i * sizeof(char)]);
+                /* printf("%c", charPtr[i * sizeof(char)]); */
+                printf("%c", charPtr[i]);
                 /* if (charPtr[i * sizeof(char)] == 'H') */
                 /*         parse_http(buf); */
         }
@@ -881,17 +882,24 @@ int doh_stream_split_http(DnsStream *s){
                 printf("%c", p_data[i * sizeof(char)]);
         }
 
+
+
         doh_response *doh = parse_doh_response(p_data);
+
+        /* dns packet size is total read size minus headers */
+        doh->dns_data_len = s->read_packet->size - doh->http_header_len;
 
         /* need to take the Content Length header */
 
         printf("\nHTTP header:\n%.*s\n", doh->http_header_len, doh->http_header);
         printf("DNS data:\n%.*s\n", doh->dns_data_len, doh->dns_data);
 
-        /* need rework here, pass the packet to the rest of stack */
-        /* need to overwrite read_packet with the actual dns answer */
 
-        memcpy(p_data, doh->dns_data, 56);
+        /* need to process more than 56 bytes */
+        /* e.g. debian.org answer has 103 bytes */
+
+        /* memcpy(p_data, doh->dns_data, 56); */
+        memcpy(p_data, doh->dns_data, doh->dns_data_len);
 
 
         /* /\* free_doh_response(doh); *\/ */
@@ -913,10 +921,15 @@ doh_response *parse_doh_response(char *response) {
 
         puts("parse_doh_response");
         int i = 0;
+        int r;
 
         for (i = 0; i < 1024; ++i){
                 printf("%c", response[i * sizeof(char)]);
         }
+
+
+
+
 
         doh_response *doh = malloc(sizeof(doh_response));
 
@@ -938,7 +951,29 @@ doh_response *parse_doh_response(char *response) {
 
         // Extract the DNS data
         doh->dns_data = dns_start + 4; // Skip "\r\n\r\n"
-        doh->dns_data_len = strlen(doh->dns_data);
+        /* doh->dns_data_len = strlen(doh->dns_data); */
+
+        _cleanup_free_ char *header_copy = NULL;
+
+        header_copy = malloc(doh->http_header_len);
+        memcpy(header_copy, doh->http_header, doh->http_header_len);
+
+        puts("header_copy");
+
+        char *header_status = NULL;
+        header_status = strtok(header_copy, "\r\n");
+        header_status = strtok(header_status, " ");
+        header_status = strtok(NULL, " ");
+
+        /* could use atoi here */
+
+        if(strcmp(header_status, "200") == 0){
+                puts("HTTP 200 ok, proceeding...");
+        } else {
+                puts("HTTP not ok, fail now, reponse code:");
+                puts(header_status);
+        }
+
 
         return doh;
 }
@@ -1081,12 +1116,16 @@ int doh_packet_to_base64url(DnsTransaction *t){
 
         // Convert binary data to Base64
         // 40 bytes is the packet size in wireshark
+        /* todo need to get the packet size dynamically */
         int r = base64mem_full(p_data, 40, 56, &doh_url);
         remove_padding(doh_url);
 
         /* forcing url, testing encoding */
         /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAABAAEAACkFwAAAAAAAAAo"); */
         /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAABAAEAACkFwAAAAAAAAA"); */
+
+        /* forcing wrong url */
+        /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAAAAAAAA"); */
 
 
 
