@@ -1600,13 +1600,10 @@ DnsOverTlsMode manager_get_dns_over_tls_mode(Manager *m) {
 DnsOverHttpsMode manager_get_dns_over_https_mode(Manager *m) {
         assert(m);
 
-        return DNS_OVER_HTTPS_YES;
+        if (m->dns_over_https_mode != _DNS_OVER_HTTPS_MODE_INVALID)
+                return m->dns_over_https_mode;
 
-        /* need conf file parser */
-        /* if (m->dns_over_https_mode != _DNS_OVER_HTTPS_MODE_INVALID) */
-        /*         return m->dns_over_https_mode; */
-
-        /* return DNS_OVER_HTTPS_NO; */
+        return DNS_OVER_HTTPS_NO;
 }
 
 void manager_dnssec_verdict(Manager *m, DnssecVerdict verdict, const DnsResourceKey *key) {

@@ -89,6 +89,7 @@ enum DnsOverHttpsMode {
 CONFIG_PARSER_PROTOTYPE(config_parse_resolve_support);
 CONFIG_PARSER_PROTOTYPE(config_parse_dnssec_mode);
 CONFIG_PARSER_PROTOTYPE(config_parse_dns_over_tls_mode);
+CONFIG_PARSER_PROTOTYPE(config_parse_dns_over_https_mode);
 CONFIG_PARSER_PROTOTYPE(config_parse_dns_cache_mode);
 
 const char* resolve_support_to_string(ResolveSupport p) _const_;
