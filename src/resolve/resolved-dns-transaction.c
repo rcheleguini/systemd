@@ -595,8 +595,7 @@ static int dns_transaction_on_stream_packet(DnsTransaction *t, DnsStream *s, Dns
 
         encrypted = s->encrypted;
 
-        /* if(p) */
-        /*         dns_transaction_close_connection(t, false); */
+        dns_transaction_close_connection(t, true);
 
         if (dns_packet_validate_reply(p) <= 0) {
                 log_debug("Invalid TCP reply packet.");
@@ -652,8 +651,15 @@ static int on_stream_packet(DnsStream *s, DnsPacket *p) {
         int p_id = DNS_PACKET_ID(p);
         int *pp_id = &p_id;
 
-        /* t = hashmap_get(s->manager->dns_transactions, UINT_TO_PTR(DNS_PACKET_ID(p))); */
-        t = s->transactions;
+        /* todo, skip ID validation during doh? */
+        if (s->encrypted_doh){
+                t = s->transactions;
+                return dns_transaction_on_stream_packet(t, s, p);
+        }
+
+
+        t = hashmap_get(s->manager->dns_transactions, UINT_TO_PTR(DNS_PACKET_ID(p)));
+
         if (t && t->stream == s) /* Validate that the stream we got this on actually is the stream the
                                   * transaction was using. */
                 return dns_transaction_on_stream_packet(t, s, p);
@@ -716,6 +722,7 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
                 else {
                         printf("\n about to start tcp socket...\n");
                         fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa);
+                        printf("\n tcp socket fd: %d\n", fd);
                 }
 
                 /* Lower timeout in DNS-over-TLS opportunistic mode. In environments where DoT is blocked
@@ -2086,6 +2093,9 @@ int dns_transaction_go(DnsTransaction *t) {
          */
 
         assert_se(sd_event_now(t->scope->manager->event, CLOCK_BOOTTIME, &ts) >= 0);
+
+        printf("dns_transacation_go, transaction id: %d\n", t->id);
+        printf("dns_transacation_go, transaction : %d\n", t->id);
 
         r = dns_transaction_prepare(t, ts);
         if (r <= 0)

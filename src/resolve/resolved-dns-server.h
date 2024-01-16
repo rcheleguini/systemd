@@ -88,6 +88,7 @@ struct DnsServer {
         unsigned n_failed_udp;
         unsigned n_failed_tcp;
         unsigned n_failed_tls;
+        unsigned n_failed_https;
 
         bool packet_truncated:1;        /* Set when TC bit was set on reply */
         bool packet_bad_opt:1;          /* Set when OPT was missing or otherwise bad on reply */

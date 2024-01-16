@@ -31,6 +31,8 @@ static int dns_stream_update_io(DnsStream *s) {
 
         assert(s);
 
+        puts("dns_stream_update_io");
+
         if (s->write_packet && s->n_written < sizeof(s->write_size) + s->write_packet->size)
                 f |= EPOLLOUT;
         else if (!ordered_set_isempty(s->write_queue)) {
@@ -235,9 +237,12 @@ ssize_t dns_stream_writev(DnsStream *s, const struct iovec *iov, size_t iovcnt, 
 #endif
 
 #if ENABLE_DNS_OVER_HTTPS
-        if (s->encrypted_doh && !(flags & DNS_STREAM_WRITE_HTTPS_DATA))
+        if (s->encrypted_doh && !(flags & DNS_STREAM_WRITE_HTTPS_DATA)){
+                puts("calling doh_stream_writev from dns_stream_writev");
                 return doh_stream_writev(s, iov, iovcnt);
+        }
 #endif
+        puts("pass tls and https checks in dns_stream_writev");
 
         if (s->tfo_salen > 0) {
                 struct msghdr hdr = {
@@ -274,10 +279,10 @@ ssize_t dns_stream_writev(DnsStream *s, const struct iovec *iov, size_t iovcnt, 
 static ssize_t dns_stream_read(DnsStream *s, void *buf, size_t count) {
         ssize_t ss;
 
+        puts("dns_stream_read");
 #if ENABLE_DNS_OVER_TLS
         if (s->encrypted)
                 ss = dnstls_stream_read(s, buf, count);
-        else
 #endif
 
 #if ENABLE_DNS_OVER_HTTPS
@@ -339,11 +344,10 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
 
         assert(s);
 
-#if ENABLE_DNS_OVER_HTTPS
-        if (s->encrypted_doh) {
-                printf("\n doh on_stream_io... \n");
-                r = doh_stream_on_io(s, revents);
-                if (r == DOH_STREAM_CLOSED)
+#if ENABLE_DNS_OVER_TLS
+        if (s->encrypted) {
+                r = dnstls_stream_on_io(s, revents);
+                if (r == DNSTLS_STREAM_CLOSED)
                         return 0;
                 if (r == -EAGAIN)
                         return dns_stream_update_io(s);
@@ -356,10 +360,12 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
         }
 #endif
 
-#if ENABLE_DNS_OVER_TLS
-        if (s->encrypted) {
-                r = dnstls_stream_on_io(s, revents);
-                if (r == DNSTLS_STREAM_CLOSED)
+#if ENABLE_DNS_OVER_HTTPS
+        if (s->encrypted_doh) {
+                printf("\n doh on_stream_io... \n");
+                printf("\n events: %u", revents);
+                r = doh_stream_on_io(s, revents);
+                if (r == DOH_STREAM_CLOSED)
                         return 0;
                 if (r == -EAGAIN)
                         return dns_stream_update_io(s);
@@ -495,8 +501,6 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                         /* Are we done? If so, call the packet handler and re-enable EPOLLIN for the
                          * event source if necessary. */
 
-
-
                         if (s->encrypted_doh){
                                 int i = 0;
                                 char* charPtr = (char*)s->read_packet;
@@ -527,8 +531,8 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
 
                                 s->packet_received = true;
 
-                                if (s->encrypted_doh)
-                                        return dns_stream_complete(s, 0);
+                                /* if (s->encrypted_doh) */
+                                /*         return dns_stream_complete(s, 0); */
 
                                 /* If we just disabled the read event, stop reading */
                                 if (!FLAGS_SET(s->requested_events, EPOLLIN))

@@ -265,7 +265,12 @@ void dns_server_packet_received(DnsServer *s, int protocol, DnsServerFeatureLeve
                 if (DNS_SERVER_FEATURE_LEVEL_IS_TLS(level)) {
                         if (s->possible_feature_level == level)
                                 s->n_failed_tls = 0;
-                } else {
+                }
+                if (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(level)) {
+                        if (s->possible_feature_level == level)
+                                s->n_failed_https = 0;
+                }
+                else {
                         if (s->possible_feature_level == level)
                                 s->n_failed_tcp = 0;
 

@@ -800,6 +800,7 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
 
         if (r <= 0) {
                 error = SSL_get_error(stream->doh_data.ssl, r);
+                printf("\n\nssl read is less than 0...");
                 if (IN_SET(error, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE)) {
                         /* If we receive SSL_ERROR_WANT_READ here, there are two possible scenarios:
                          * OpenSSL needs to renegotiate (so we want to get an EPOLLIN event), or
@@ -810,8 +811,10 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
                          again on SSL_write (at which point we will request EPOLLIN force a read);
                          or we will just eventually read data anyway while we wait for a packet */
                         stream->doh_events = error == SSL_ERROR_WANT_READ ? 0 : EPOLLOUT;
+                        puts("setting to -EAGAIN...");
                         ss = -EAGAIN;
                 } else if (error == SSL_ERROR_ZERO_RETURN) {
+                        puts("error SSL_ERROR_ZERO_RETURN...");
                         stream->doh_events = 0;
                         ss = 0;
                 } else {
@@ -822,12 +825,15 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
         } else
                 stream->doh_events = 0;
 
-        /* flush write buffer in cache of renegotiation */
-        r = doh_flush_write_buffer(stream);
-        if (r < 0)
-                return r;
-
+        stream->doh_events = 0;
         return ss;
+
+        /* /\* flush write buffer in case of renegotiation *\/ */
+        /* r = doh_flush_write_buffer(stream); */
+        /* if (r < 0) */
+        /*         return r; */
+
+        /* return ss; */
 
 }
 
