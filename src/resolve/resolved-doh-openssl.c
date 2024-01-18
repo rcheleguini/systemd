@@ -14,6 +14,7 @@
 #include "resolved-doh.h"
 #include "resolved-manager.h"
 #include "hexdecoct.h"
+#include "build.h"
 
 #define MAXHEADERS 50
 #define MAXHEADERLEN 1024
@@ -693,24 +694,14 @@ static ssize_t doh_stream_write(DnsStream *stream, const char *buf, size_t count
 
         int i = 0;
 
-        /* char request[1024]; */
-        /* sprintf(request, */
-        /*         /\* working *\/ */
-        /*         /\* "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A", *\/ */
-        /*         /\* simulating curl *\/ */
-        /*         "GET /dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.1\x0D\x0AHost: %s\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: *\/\*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A", */
-        /*         "8.8.8.8"); */
-        /* printf("\nrequest: %s\n", request); */
-        /* ERR_clear_error(); */
-        /* ss = r = SSL_write(stream->doh_data.ssl, request, strlen(request)); */
 
-        /* printf("\nrequest: %s\n", stream->doh_sent); */
-
+        /* todo find way to remove the hard coded 512 */
         ERR_clear_error();
         ss = r = SSL_write(stream->doh_data.ssl, stream->doh_sent, 512);
 
         /* ERR_clear_error(); */
         /* ss = r = SSL_write(stream->doh_data.ssl, buf, count); */
+
         if (r <= 0) {
                 error = SSL_get_error(stream->doh_data.ssl, r);
                 if (IN_SET(error, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE)) {
@@ -828,6 +819,7 @@ ssize_t doh_stream_read(DnsStream *stream, void *buf, size_t count) {
         stream->doh_events = 0;
         return ss;
 
+        /* todo, this breaks dns over https, from original tls
         /* /\* flush write buffer in case of renegotiation *\/ */
         /* r = doh_flush_write_buffer(stream); */
         /* if (r < 0) */
@@ -1101,54 +1093,34 @@ int doh_packet_to_base64url(DnsTransaction *t){
         p_data[0] = 0;
         p_data[1] = 0;
 
-        /* puts("trying to remove EDNS..."); */
-        /* /\* p_data[EDNS_OFFSET + 2] = 0x00;  // Set OPT Length to 0 *\/ */
-
-        /* unsigned char *flags_byte = p_data + 9; */
-        /* *flags_byte &= ~0x80; */
-
-
-        /* packet_length -= EDNS_LENGTH;   // Adjust packet length */
-
-
         p_id = DNS_PACKET_ID(t->sent);
 
         _cleanup_free_ char *doh_url = NULL;
-        /* doh_url =  base32hexmem(p_data, 64, false); */
-
-        /* size_t r = base64mem_full(p_data, 64, SIZE_MAX, &doh_url); */
 
         puts("");
 
         // Convert binary data to Base64
         // 40 bytes is the packet size in wireshark
-        /* todo need to get the packet size dynamically */
-        int r = base64mem_full(p_data, 40, 56, &doh_url);
+        int r = base64mem_full(p_data, t->sent->size, 56, &doh_url);
         remove_padding(doh_url);
 
-        /* forcing url, testing encoding */
-        /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAABAAEAACkFwAAAAAAAAAo"); */
-        /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAABAAEAACkFwAAAAAAAAA"); */
-
-        /* forcing wrong url */
-        /* strcpy(doh_url,"AAABEAABAAAAAAABB2V4YW1wbGUDY29tAAAAAAAAA"); */
-
-
-
-        char get[] = "GET /dns-query?dns=";
-        char headers[] = " HTTP/1.1\x0D\x0AHost: 8.8.8.8\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: */*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A";
         char get_request[512] = "";
 
-        strcpy(get_request, get);
+        /* new solution */
+        char header_host[32] = "";
+        snprintf(header_host, sizeof(header_host), "Host: %s\r\n", t->server->server_string);
+
+        char header_agent[64] = "";
+        snprintf(header_agent, sizeof(header_agent), "User-Agent: systemd-resolved/%s\r\n", STRINGIFY(PROJECT_VERSION));
+
+
+        strcpy(get_request, "GET /dns-query?dns=");
         strcat(get_request, doh_url);
-        strcat(get_request, headers);
-
-
-
-        /* memset(&get_request, 0x0, sizeof(struct DohRequest)); */
-        /* strcpy(get_request.get, "GET /dns-query?dns="); */
-        /* strcpy(get_request.data, doh_url); */
-        /* strcpy(get_request.headers, "HTTP/1.1\x0D\x0AHost: %s\x0D\x0AUser-Agent: curl/8.2.1\x0D\x0AAccept: *\/\*\x0D\x0A\x43onnection: Close\x0D\x0A\x0D\x0A"); */
+        strcat(get_request, " HTTP/1.1\r\n");
+        strcat(get_request, header_host);
+        strcat(get_request, header_agent);
+        strcat(get_request, "Connection: Close\r\n");
+        strcat(get_request, "\r\n");
 
         /* todo construct t->sent_url and remove the hard corded url in write() */
 

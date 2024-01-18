@@ -46,6 +46,15 @@ typedef struct {
   int dns_data_len;
 } doh_response;
 
+typedef struct {
+        char method[32];
+        char header_host[40];
+        char header_agent[40];
+        char header_accept[12];
+        char header_connection[16];
+        char body[512];
+} doh_request;
+
 int parse_http(const char *req);
 int doh_stream_split_http(DnsStream *s);
 doh_response *parse_doh_response(char *response);
