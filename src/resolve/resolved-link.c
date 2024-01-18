@@ -412,48 +412,6 @@ static int link_update_dns_over_tls_mode(Link *l) {
         return 0;
 }
 
-void link_set_dns_over_https_mode(Link *l, DnsOverHttpsMode mode) {
-
-        assert(l);
-
-#if ! ENABLE_DNS_OVER_HTTPS
-        if (mode != DNS_OVER_HTTPS_NO)
-                log_link_warning(l,
-                                 "DNS-over-HTTPS option for the link cannot be enabled or set to opportunistic "
-                                 "when systemd-resolved is built without DNS-over-HTTPS support. "
-                                 "Turning off DNS-over-HTTPS support.");
-        return;
-#endif
-
-        l->dns_over_https_mode = mode;
-        l->unicast_scope = dns_scope_free(l->unicast_scope);
-}
-
-static int link_update_dns_over_https_mode(Link *l) {
-        _cleanup_free_ char *b = NULL;
-        int r;
-        DnsOverHttpsMode https_mode;
-
-        assert(l);
-
-        l->dns_over_https_mode = _DNS_OVER_HTTPS_MODE_INVALID;
-
-        r = sd_network_link_get_dns_over_https(l->ifindex, &b);
-        if (r == -ENODATA)
-                return 0;
-        if (r < 0)
-                return r;
-
-        https_mode = DNS_OVER_HTTPS_YES;
-        r = https_mode;
-        /* r = dns_over_https_mode_from_string(b); */
-        if (r < 0)
-                return r;
-
-        l->dns_over_https_mode = r;
-        return 0;
-}
-
 void link_set_dnssec_mode(Link *l, DnssecMode mode) {
 
         assert(l);
@@ -817,15 +775,6 @@ DnsOverTlsMode link_get_dns_over_tls_mode(Link *l) {
                 return l->dns_over_tls_mode;
 
         return manager_get_dns_over_tls_mode(l->manager);
-}
-
-DnsOverHttpsMode link_get_dns_over_https_mode(Link *l) {
-        assert(l);
-
-        if (l->dns_over_https_mode != _DNS_OVER_HTTPS_MODE_INVALID)
-                return l->dns_over_https_mode;
-
-        return manager_get_dns_over_https_mode(l->manager);
 }
 
 DnssecMode link_get_dnssec_mode(Link *l) {

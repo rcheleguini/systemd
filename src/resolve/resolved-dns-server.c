@@ -974,9 +974,6 @@ DnsOverTlsMode dns_server_get_dns_over_tls_mode(DnsServer *s) {
 DnsOverHttpsMode dns_server_get_dns_over_https_mode(DnsServer *s) {
         assert(s);
 
-        if (s->link)
-                return link_get_dns_over_https_mode(s->link);
-
         return manager_get_dns_over_https_mode(s->manager);
 }
 

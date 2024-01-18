@@ -53,7 +53,6 @@ int dns_scope_new(Manager *m, DnsScope **ret, Link *l, DnsProtocol protocol, int
                 if (l) {
                         s->dnssec_mode = link_get_dnssec_mode(l);
                         s->dns_over_tls_mode = link_get_dns_over_tls_mode(l);
-                        s->dns_over_https_mode = link_get_dns_over_https_mode(l);
                 } else {
                         s->dnssec_mode = manager_get_dnssec_mode(m);
                         s->dns_over_tls_mode = manager_get_dns_over_tls_mode(m);
