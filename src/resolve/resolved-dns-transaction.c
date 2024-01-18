@@ -672,12 +672,19 @@ static int on_stream_packet(DnsStream *s, DnsPacket *p) {
 static uint16_t dns_transaction_port(DnsTransaction *t) {
         assert(t);
 
-        /* todo determine port here 443 */
         printf("\n dns_transacation_port...\n");
         if (t->server->port > 0)
                 return t->server->port;
 
-        return DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level) ? 853 : 53;
+        if (DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level))
+                return 853;
+
+        if (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level))
+                return 443;
+
+        return 53;
+
+        /* return DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level) ? 853 : 53; */
 }
 
 static int dns_transaction_emit_tcp(DnsTransaction *t) {

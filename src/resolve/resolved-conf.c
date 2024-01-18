@@ -34,8 +34,6 @@ static int manager_add_dns_server_by_string(Manager *m, DnsServerType type, cons
         assert(word);
 
 
-
-        /* word = strcpy(word, "8.8.8.8#dns.google"); */
         r = in_addr_port_ifindex_name_from_string_auto(word, &family, &address, &port, &ifindex, &server_name);
         if (r < 0)
                 return r;
@@ -58,11 +56,7 @@ static int manager_add_dns_server_by_string(Manager *m, DnsServerType type, cons
                 return 0;
         }
 
-        /* todo check if port here is needed to start tls connection */
-        /* check if we have encrypted_doh enabled here */
         printf("\n about to create new server\n");
-        port = 443;
-        /* server_name = strcpy(server_name, "8.8.8.8"); */
 
         return dns_server_new(m, NULL, type, NULL, family, &address, port, ifindex, server_name);
 }
