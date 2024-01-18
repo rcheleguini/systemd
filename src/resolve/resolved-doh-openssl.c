@@ -16,11 +16,6 @@
 #include "hexdecoct.h"
 #include "build.h"
 
-#define MAXHEADERS 50
-#define MAXHEADERLEN 1024
-
-#define BASE64URL_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-
 
 static char *doh_error_string(int ssl_error, char *buf, size_t count) {
 
@@ -527,13 +522,9 @@ doh_response *parse_doh_response(char *response) {
         }
 
 
-
-
-
         doh_response *doh = malloc(sizeof(doh_response));
 
         // Find the start of the DNS data
-        /* char *dns_start = strstr(response, "\r\n\r\n"); */
         char *dns_start = memmem(response, 1024, "\r\n\r\n", sizeof(char) * 4);
 
         if (!dns_start) {
@@ -544,13 +535,8 @@ doh_response *parse_doh_response(char *response) {
                 return doh;
         }
 
-        // Extract the HTTP header
         doh->http_header = response;
         doh->http_header_len = dns_start - response;
-
-        // Extract the DNS data
-        doh->dns_data = dns_start + 4; // Skip "\r\n\r\n"
-        /* doh->dns_data_len = strlen(doh->dns_data); */
 
         _cleanup_free_ char *header_copy = NULL;
 
@@ -564,15 +550,19 @@ doh_response *parse_doh_response(char *response) {
         header_status = strtok(header_status, " ");
         header_status = strtok(NULL, " ");
 
-        /* could use atoi here */
+        int status = atoi(header_status);
 
-        if(strcmp(header_status, "200") == 0){
-                puts("HTTP 200 ok, proceeding...");
-        } else {
-                puts("HTTP not ok, fail now, reponse code:");
-                puts(header_status);
+        switch(status){
+        case 200:
+                puts("HTTP 200 ok, proceeding to copy body content/dns packet...");
+                doh->dns_data = dns_start + 4; // the 4 here is to skip the "\r\n\r\n"
+                /* doh->dns_data_len = strlen(doh->dns_data); */
+                break;
+        default:
+                printf("\n\nHTTP not ok, fail now, reponse code: %d", status);
+                /* handle errors here */
+                break;
         }
-
 
         return doh;
 }
