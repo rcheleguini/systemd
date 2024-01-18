@@ -501,6 +501,7 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                         /* Are we done? If so, call the packet handler and re-enable EPOLLIN for the
                          * event source if necessary. */
 
+                        /* parse http and unwrap packet data */
                         if (s->encrypted_doh){
                                 int i = 0;
                                 char* charPtr = (char*)s->read_packet;
@@ -513,8 +514,6 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                 puts("");
                                 puts("split http header...");
                                 doh_stream_split_http(s);
-
-                                /* parse http and return packet data */
 
                         }
 
@@ -530,9 +529,6 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                         return dns_stream_complete(s, -r);
 
                                 s->packet_received = true;
-
-                                /* if (s->encrypted_doh) */
-                                /*         return dns_stream_complete(s, 0); */
 
                                 /* If we just disabled the read event, stop reading */
                                 if (!FLAGS_SET(s->requested_events, EPOLLIN))

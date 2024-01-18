@@ -672,7 +672,7 @@ static int on_stream_packet(DnsStream *s, DnsPacket *p) {
 static uint16_t dns_transaction_port(DnsTransaction *t) {
         assert(t);
 
-        printf("\n dns_transacation_port...\n");
+        printf("\n about to decide dns_transacation_port...\n");
         if (t->server->port > 0)
                 return t->server->port;
 
@@ -1178,12 +1178,12 @@ void dns_transaction_process_reply(DnsTransaction *t, DnsPacket *p, bool encrypt
                         return;
                 }
 
-                /* skip this in https */
-                /* if (DNS_PACKET_ID(p) != t->id) { */
-                /*         /\* Not the reply to our query? Somebody must be fucking with us *\/ */
-                /*         dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY); */
-                /*         return; */
-                /* } */
+                /* skip the packet ID verification for dns over https accordingly to rfc */
+                if (DNS_PACKET_ID(p) != t->id && !(DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level))) {
+                                        /* Not the reply to our query? Somebody must be fucking with us */
+                                        dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY);
+                                        return;
+                }
         }
 
         switch (t->scope->protocol) {
@@ -2177,7 +2177,7 @@ int dns_transaction_go(DnsTransaction *t) {
                 if (r == -EMSGSIZE)
                         log_debug("Sending query via TCP since it is too large.");
                 else if (r == -EAGAIN)
-                        log_debug("Sending query via TCP since UDP isn't supported or DNS-over-TLS / DNS-over-HTTPS is selected.");
+                        log_debug("Sending query via TCP since UDP isn't supported or DNS-over-TLS or HTTPS is selected.");
                 else if (r == -EPERM)
                         log_debug("Sending query via TCP since UDP is blocked.");
                 if (IN_SET(r, -EMSGSIZE, -EAGAIN, -EPERM))

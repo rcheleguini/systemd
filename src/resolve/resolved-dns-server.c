@@ -425,8 +425,6 @@ DnsServerFeatureLevel dns_server_possible_feature_level(DnsServer *s) {
 
         assert(s);
 
-        /* TODO: add dns over https */
-
         /* Determine the best feature level we care about. If DNSSEC mode is off there's no point in using anything
          * better than EDNS0, hence don't even try. */
         if (dns_server_get_dnssec_mode(s) != DNSSEC_NO) {
@@ -600,7 +598,6 @@ DnsServerFeatureLevel dns_server_possible_feature_level(DnsServer *s) {
                 }
         }
 
-        /* s->possible_feature_level = DNS_SERVER_FEATURE_LEVEL_HTTPS_DO; */
         printf("\n possible_feature_level is: %d\n", s->possible_feature_level);
         return s->possible_feature_level;
 }
