@@ -67,19 +67,12 @@ int doh_stream_connect_tls(DnsStream *stream, DnsServer *server) {
 
         printf("\n doh_stream_connect_tls\n");
 
-        /* ssl_simple(); */
-
-        // Connect to the server
         if (connect(stream->fd, &stream->tfo_address.sa, stream->tfo_salen) == -1) {
                 puts("connected");
         }
 
         /* Disabling TCP Fast Open */
         stream->tfo_salen = 0;
-
-        /* ssl_with_fd(stream->fd); */
-
-
 
         _cleanup_(BIO_freep) BIO *rb = NULL, *wb = NULL;
         _cleanup_(SSL_freep) SSL *s = NULL;

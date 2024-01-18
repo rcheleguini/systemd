@@ -75,7 +75,6 @@ char **arg_set_domain = NULL;
 static const char *arg_set_llmnr = NULL;
 static const char *arg_set_mdns = NULL;
 static const char *arg_set_dns_over_tls = NULL;
-static const char *arg_set_dns_over_https = NULL;
 static const char *arg_set_dnssec = NULL;
 static char **arg_set_nta = NULL;
 
@@ -1508,7 +1507,6 @@ typedef struct LinkInfo {
         const char *llmnr;
         const char *mdns;
         const char *dns_over_tls;
-        const char *dns_over_https;
         const char *dnssec;
         char *current_dns;
         char *current_dns_ex;
@@ -1532,7 +1530,6 @@ typedef struct GlobalInfo {
         const char *llmnr;
         const char *mdns;
         const char *dns_over_tls;
-        const char *dns_over_https;
         const char *dnssec;
         const char *resolv_conf_mode;
         bool dnssec_supported;
@@ -1600,9 +1597,6 @@ static char** link_protocol_status(const LinkInfo *info) {
         if (strv_extend_extended_bool(&s, "DNSOverTLS", info->dns_over_tls) < 0)
                 return NULL;
 
-        if (strv_extend_extended_bool(&s, "DNSOverHTTPS", info->dns_over_https) < 0)
-                return NULL;
-
         if (strv_extendf(&s, "DNSSEC=%s/%s",
                          info->dnssec ?: "???",
                          info->dnssec_supported ? "supported" : "unsupported") < 0)
@@ -1621,9 +1615,6 @@ static char** global_protocol_status(const GlobalInfo *info) {
                 return NULL;
 
         if (strv_extend_extended_bool(&s, "DNSOverTLS", info->dns_over_tls) < 0)
-                return NULL;
-
-        if (strv_extend_extended_bool(&s, "DNSOverHTTPS", info->dns_over_https) < 0)
                 return NULL;
 
         if (strv_extendf(&s, "DNSSEC=%s/%s",
@@ -1646,7 +1637,6 @@ static int status_ifindex(sd_bus *bus, int ifindex, const char *name, StatusMode
                 { "LLMNR",                      "s",        NULL,                           offsetof(LinkInfo, llmnr)            },
                 { "MulticastDNS",               "s",        NULL,                           offsetof(LinkInfo, mdns)             },
                 { "DNSOverTLS",                 "s",        NULL,                           offsetof(LinkInfo, dns_over_tls)     },
-                { "DNSOverHTTPS",               "s",        NULL,                           offsetof(LinkInfo, dns_over_https)     },
                 { "DNSSEC",                     "s",        NULL,                           offsetof(LinkInfo, dnssec)           },
                 { "DNSSECNegativeTrustAnchors", "as",       bus_map_strv_sort,              offsetof(LinkInfo, ntas)             },
                 { "DNSSECSupported",            "b",        NULL,                           offsetof(LinkInfo, dnssec_supported) },
@@ -1722,7 +1712,6 @@ static int status_ifindex(sd_bus *bus, int ifindex, const char *name, StatusMode
                 return 0;
         }
 
-        /* todo here dns over https */
         if (mode == STATUS_PRIVATE) {
                 printf("%sLink %i (%s)%s: %s\n",
                        ansi_highlight(), ifindex, name, ansi_normal(),
@@ -2512,46 +2501,6 @@ static int verb_dns_over_tls(int argc, char **argv, void *userdata) {
         return 0;
 }
 
-static int verb_dns_over_https(int argc, char **argv, void *userdata) {
-        _cleanup_(sd_bus_error_free) sd_bus_error error = SD_BUS_ERROR_NULL;
-        sd_bus *bus = ASSERT_PTR(userdata);
-        int r;
-
-        if (argc >= 2) {
-                r = ifname_mangle(argv[1]);
-                if (r < 0)
-                        return r;
-        }
-
-        if (arg_ifindex <= 0)
-                return status_all(bus, STATUS_PRIVATE);
-
-        if (argc < 3)
-                return status_ifindex(bus, arg_ifindex, NULL, STATUS_PRIVATE, NULL);
-
-        r = bus_call_method(bus, bus_resolve_mgr, "SetLinkDNSOverHTTPS", &error, NULL, "is", arg_ifindex, argv[2]);
-        if (r < 0 && sd_bus_error_has_name(&error, BUS_ERROR_LINK_BUSY)) {
-                sd_bus_error_free(&error);
-
-                r = bus_call_method(
-                                bus,
-                                bus_network_mgr,
-                                "SetLinkDNSOverHTTPS",
-                                &error,
-                                NULL,
-                                "is", arg_ifindex, argv[2]);
-        }
-        if (r < 0) {
-                if (arg_ifindex_permissive &&
-                    sd_bus_error_has_name(&error, BUS_ERROR_NO_SUCH_LINK))
-                        return 0;
-
-                return log_error_errno(r, "Failed to set DNSOverHTTPS configuration: %s", bus_error_message(&error, r));
-        }
-
-        return 0;
-}
-
 static int verb_dnssec(int argc, char **argv, void *userdata) {
         _cleanup_(sd_bus_error_free) sd_bus_error error = SD_BUS_ERROR_NULL;
         sd_bus *bus = ASSERT_PTR(userdata);
@@ -3283,7 +3232,6 @@ static int compat_help(void) {
                "     --set-llmnr=MODE       Set per-interface LLMNR mode\n"
                "     --set-mdns=MODE        Set per-interface MulticastDNS mode\n"
                "     --set-dnsovertls=MODE  Set per-interface DNS-over-TLS mode\n"
-               "     --set-dnsoverhttps=MODE  Set per-interface DNS-over-HTTPS mode\n"
                "     --set-dnssec=MODE      Set per-interface DNSSEC mode\n"
                "     --set-nta=DOMAIN       Set per-interface DNSSEC NTA\n"
                "     --revert               Revert per-interface configuration\n"
@@ -3327,7 +3275,6 @@ static int native_help(void) {
                "  llmnr [LINK [MODE]]          Get/set per-interface LLMNR mode\n"
                "  mdns [LINK [MODE]]           Get/set per-interface MulticastDNS mode\n"
                "  dnsovertls [LINK [MODE]]     Get/set per-interface DNS-over-TLS mode\n"
-               "  dnsoverhttps [LINK [MODE]]     Get/set per-interface DNS-over-HTTPS mode\n"
                "  dnssec [LINK [MODE]]         Get/set per-interface DNSSEC mode\n"
                "  nta [LINK [DOMAIN...]]       Get/set per-interface DNSSEC NTA\n"
                "  revert LINK                  Revert per-interface configuration\n"
@@ -3431,7 +3378,6 @@ static int compat_parse_argv(int argc, char *argv[]) {
                 { "set-llmnr",             required_argument, NULL, ARG_SET_LLMNR             },
                 { "set-mdns",              required_argument, NULL, ARG_SET_MDNS              },
                 { "set-dnsovertls",        required_argument, NULL, ARG_SET_PRIVATE           },
-                { "set-dnsoverhttps",        required_argument, NULL, ARG_SET_PRIVATE           },
                 { "set-dnssec",            required_argument, NULL, ARG_SET_DNSSEC            },
                 { "set-nta",               required_argument, NULL, ARG_SET_NTA               },
                 { "revert",                no_argument,       NULL, ARG_REVERT_LINK           },
@@ -3686,7 +3632,7 @@ static int compat_parse_argv(int argc, char *argv[]) {
 
                 if (arg_ifindex <= 0)
                         return log_error_errno(SYNTHETIC_ERRNO(EINVAL),
-                                               "--set-dns=, --set-domain=, --set-llmnr=, --set-mdns=, --set-dnsovertls=, --set-dnsoverhttps=, --set-dnssec=, --set-nta= and --revert require --interface=.");
+                                               "--set-dns=, --set-domain=, --set-llmnr=, --set-mdns=, --set-dnsovertls=, --set-dnssec=, --set-nta= and --revert require --interface=.");
         }
 
         return 1 /* work to do */;
@@ -3974,7 +3920,6 @@ static int native_main(int argc, char *argv[], sd_bus *bus) {
                 { "llmnr",                 VERB_ANY, 3,        0,            verb_llmnr            },
                 { "mdns",                  VERB_ANY, 3,        0,            verb_mdns             },
                 { "dnsovertls",            VERB_ANY, 3,        0,            verb_dns_over_tls     },
-                { "dnsoverhttps",            VERB_ANY, 3,        0,            verb_dns_over_https     },
                 { "dnssec",                VERB_ANY, 3,        0,            verb_dnssec           },
                 { "nta",                   VERB_ANY, VERB_ANY, 0,            verb_nta              },
                 { "revert",                VERB_ANY, 2,        0,            verb_revert_link      },
@@ -4075,12 +4020,6 @@ static int compat_main(int argc, char *argv[], sd_bus *bus) {
 
                 if (arg_set_dns_over_tls) {
                         r = translate("dnsovertls", arg_ifname, 1, (char **) &arg_set_dns_over_tls, bus);
-                        if (r < 0)
-                                return r;
-                }
-
-                if (arg_set_dns_over_https) {
-                        r = translate("dnsoverhttps", arg_ifname, 1, (char **) &arg_set_dns_over_https, bus);
                         if (r < 0)
                                 return r;
                 }
