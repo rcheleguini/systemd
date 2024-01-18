@@ -58,6 +58,8 @@ static int manager_add_dns_server_by_string(Manager *m, DnsServerType type, cons
                 return 0;
         }
 
+        /* todo check if port here is needed to start tls connection */
+        /* check if we have encrypted_doh enabled here */
         printf("\n about to create new server\n");
         port = 443;
         /* server_name = strcpy(server_name, "8.8.8.8"); */

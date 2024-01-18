@@ -672,6 +672,7 @@ static int on_stream_packet(DnsStream *s, DnsPacket *p) {
 static uint16_t dns_transaction_port(DnsTransaction *t) {
         assert(t);
 
+        /* todo determine port here 443 */
         printf("\n dns_transacation_port...\n");
         if (t->server->port > 0)
                 return t->server->port;
