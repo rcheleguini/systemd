@@ -4,66 +4,11 @@
 #error This source file requires DNS-over-HTTPS to be enabled and OpenSSL to be available.
 #endif
 
-#include <openssl/bio.h>
-#include <openssl/err.h>
-#include <openssl/x509v3.h>
-
-#include "io-util.h"
-#include "openssl-util.h"
 #include "resolved-dns-stream.h"
 #include "resolved-dnshttps.h"
 #include "resolved-manager.h"
 #include "hexdecoct.h"
 #include "build.h"
-
-
-int dnshttps_stream_split_http(DnsStream *s){
-        puts("dnshttps_split_http");
-
-        char *p_data;
-        p_data = DNS_PACKET_DATA(s->read_packet);
-
-        int i = 0;
-        /* char* charPtr = (char*)s->read_packet; */
-
-        for (i = 0; i < s->read_packet->size; ++i){
-                printf("%c", p_data[i * sizeof(char)]);
-        }
-
-
-
-        dnshttps_response *dnshttps = parse_dnshttps_response(p_data);
-
-        /* dns packet size is total read size minus headers */
-        dnshttps->dns_data_len = s->read_packet->size - dnshttps->http_header_len;
-
-        /* need to take the Content Length header */
-
-        printf("\nHTTP header:\n%.*s\n", dnshttps->http_header_len, dnshttps->http_header);
-        printf("DNS data:\n%.*s\n", dnshttps->dns_data_len, dnshttps->dns_data);
-
-
-        /* need to process more than 56 bytes */
-        /* e.g. debian.org answer has 103 bytes */
-
-        /* memcpy(p_data, dnshttps->dns_data, 56); */
-        memcpy(p_data, dnshttps->dns_data, dnshttps->dns_data_len);
-
-
-        /* /\* free_dnshttps_response(dnshttps); *\/ */
-        /* for (i = 0; i < 45; ++i){ */
-        /*         printf("%c", dnshttps->dns_data[i * sizeof(char)]); */
-        /* } */
-
-        /* for (i = 0; i < 45; ++i){ */
-        /*         memcpy(p_data, dnshttps->dns_data, sizeof(char)); */
-        /*         p_data++; */
-        /*         dnshttps->dns_data++; */
-        /* } */
-
-
-        return 0;
-}
 
 dnshttps_response *parse_dnshttps_response(char *response) {
 
@@ -75,19 +20,18 @@ dnshttps_response *parse_dnshttps_response(char *response) {
                 printf("%c", response[i * sizeof(char)]);
         }
 
-
         dnshttps_response *dnshttps = malloc(sizeof(dnshttps_response));
 
-        // Find the start of the DNS data
+        // find the start of response body (the DNS packet)
         char *dns_start = memmem(response, 1024, "\r\n\r\n", sizeof(char) * 4);
 
-        if (!dns_start) {
-                dnshttps->http_header = response;
-                dnshttps->http_header_len = strlen(response);
-                dnshttps->dns_data = NULL;
-                dnshttps->dns_data_len = 0;
-                return dnshttps;
-        }
+        /* if (!dns_start) { */
+        /*         dnshttps->http_header = response; */
+        /*         dnshttps->http_header_len = strlen(response); */
+        /*         dnshttps->dns_data = NULL; */
+        /*         dnshttps->dns_data_len = 0; */
+        /*         return dnshttps; */
+        /* } */
 
         dnshttps->http_header = response;
         dnshttps->http_header_len = dns_start - response;
@@ -109,20 +53,48 @@ dnshttps_response *parse_dnshttps_response(char *response) {
         switch(status){
         case 200:
                 puts("HTTP 200 ok, proceeding to copy body content/dns packet...");
-                dnshttps->dns_data = dns_start + 4; // the 4 here is to skip the "\r\n\r\n"
-                /* dnshttps->dns_data_len = strlen(dnshttps->dns_data); */
+                // the 4 here is to skip the http separator "\r\n\r\n"
+                dnshttps->dns_data = dns_start + 4;
                 break;
         default:
                 printf("\n\nHTTP not ok, fail now, reponse code: %d", status);
-                /* handle errors here */
+                /* TODO: handle errors here */
                 break;
         }
+
+        /* TODO: parse and confirm Content-Type: application/dns-message */
 
         return dnshttps;
 }
 
+int dnshttps_stream_split_http(DnsStream *s){
+        puts("dnshttps_split_http");
 
-// Function to remove trailing '=' characters from a Base64url-encoded string
+        char *p_data;
+        p_data = DNS_PACKET_DATA(s->read_packet);
+
+        int i = 0;
+        /* char* charPtr = (char*)s->read_packet; */
+
+        for (i = 0; i < s->read_packet->size; ++i){
+                printf("%c", p_data[i * sizeof(char)]);
+        }
+
+        dnshttps_response *dnshttps = parse_dnshttps_response(p_data);
+
+        /* pure dns packet size is total read size minus headers */
+        dnshttps->dns_data_len = s->read_packet->size - dnshttps->http_header_len;
+
+        printf("\nHTTP header:\n%.*s\n", dnshttps->http_header_len, dnshttps->http_header);
+        printf("DNS data:\n%.*s\n", dnshttps->dns_data_len, dnshttps->dns_data);
+
+        /* replace the whole HTTP response with the pure DNS packet */
+        memcpy(p_data, dnshttps->dns_data, dnshttps->dns_data_len);
+
+        return 0;
+}
+
+// remove trailing '=' characters from a base64
 void remove_padding(char *str) {
     size_t len = strlen(str);
 
@@ -131,16 +103,12 @@ void remove_padding(char *str) {
     }
 }
 
-/* should take the packet wire format and construct a http request*/
+/* should take the packet wire format and construct a http request, wire format*/
 int dnshttps_packet_to_base64url(DnsTransaction *t){
         printf("\n in tcp, about to make base64url...\n");
 
-        /* DnsPacketHeader *p_header = DNS_PACKET_HEADER(t->sent); */
         uint8_t *p_data = DNS_PACKET_DATA(t->sent);
         uint16_t p_id = DNS_PACKET_ID(t->sent);
-
-        /* struct DnshttpsRequest get_request; */
-
 
         /* puts("zeroing id..."); */
         p_data[0] = 0;
@@ -152,14 +120,13 @@ int dnshttps_packet_to_base64url(DnsTransaction *t){
 
         puts("");
 
-        // Convert binary data to Base64
-        // 40 bytes is the packet size in wireshark
+        // 40 bytes approx, is the packet size in wireshark
+        /* TODO: what about the url safe base64? */
         int r = base64mem_full(p_data, t->sent->size, 56, &dnshttps_url);
         remove_padding(dnshttps_url);
 
         char get_request[512] = "";
 
-        /* new solution */
         char header_host[32] = "";
         snprintf(header_host, sizeof(header_host), "Host: %s\r\n", t->server->server_string);
 
@@ -175,15 +142,9 @@ int dnshttps_packet_to_base64url(DnsTransaction *t){
         strcat(get_request, "Connection: Close\r\n");
         strcat(get_request, "\r\n");
 
-        /* todo construct t->sent_url and remove the hard corded url in write() */
-
         puts(get_request);
         printf("assigning request to stream: %p\n", t->stream);
         strcpy(t->stream->dnshttps_sent, get_request);
-
-        /* t->stream->write_packet = (struct DnsPacket *)&get_request; */
-        /* t->stream->write_packet->size = sizeof(get_request); */
-
 
         return 0;
 }
