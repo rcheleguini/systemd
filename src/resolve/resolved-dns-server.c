@@ -619,7 +619,7 @@ int dns_server_adjust_opt(DnsServer *server, DnsPacket *packet, DnsServerFeature
         edns_do = level >= DNS_SERVER_FEATURE_LEVEL_DO;
 
         /* TODO: fix here for dns over https */
-        edns_do = false;
+        /* edns_do = false; */
 
         udp_size = udp_header_size(server->family);
 
