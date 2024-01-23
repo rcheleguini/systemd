@@ -127,6 +127,9 @@ int dnstls_stream_connect_tls(DnsStream *stream, DnsServer *server) {
         stream->encrypted = true;
         stream->dnstls_data.ssl = TAKE_PTR(s);
 
+        if (server->manager->dns_over_https_mode)
+                stream->encrypted_dnshttps = true;
+
         r = dnstls_flush_write_buffer(stream);
         if (r < 0 && r != -EAGAIN) {
                 SSL_free(TAKE_PTR(stream->dnstls_data.ssl));

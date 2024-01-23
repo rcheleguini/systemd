@@ -272,6 +272,8 @@ static int on_stream_timeout(sd_event_source *es, usec_t usec, void *userdata) {
 static DnsPacket *dns_stream_take_read_packet(DnsStream *s) {
         assert(s);
 
+        puts("dns_stream_take_read_packet");
+
         /* Note, dns_stream_update() should be called after this is called. When this is called, the
          * stream may be already full and the EPOLLIN flag is dropped from the stream IO event source.
          * Even this makes a room to read in the stream, this does not call dns_stream_update(), hence
@@ -285,7 +287,7 @@ static DnsPacket *dns_stream_take_read_packet(DnsStream *s) {
         if (s->n_read < sizeof(s->read_size))
                 return NULL;
 
-        if (s->n_read < sizeof(s->read_size) + be16toh(s->read_size))
+        if ((s->n_read < sizeof(s->read_size) + be16toh(s->read_size)) && (s->encrypted_dnshttps == false))
                 return NULL;
 
         s->n_read = 0;
@@ -327,19 +329,20 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
             s->n_written < sizeof(s->write_size) + s->write_packet->size) {
 
                 puts("EPOLLOUT");
-                puts("about to create write iov...");
-                /* struct iovec iov[] = { */
-                /*         IOVEC_MAKE(&s->write_size, sizeof(s->write_size)), */
-                /*         IOVEC_MAKE(DNS_PACKET_DATA(s->write_packet), s->write_packet->size), */
-                /* }; */
-
-                int i;
-                for (i = 0; i < 524; ++i){
-                        printf("%c", s->dnshttps_sent[i]);
-                }
                 struct iovec iov[] = {
-                        IOVEC_MAKE(&s->dnshttps_sent, 524),
-                        IOVEC_MAKE(&s->dnshttps_write_size, sizeof(s->dnshttps_write_size)),
+                        IOVEC_MAKE(&s->write_size, sizeof(s->write_size)),
+                        IOVEC_MAKE(DNS_PACKET_DATA(s->write_packet), s->write_packet->size),
+                };
+
+                if (s->encrypted_dnshttps){
+                        puts("about to overwrite iov...");
+                        int i;
+                        for (i = 0; i < 524; ++i){
+                                printf("%c", s->dnshttps_sent[i]);
+                        }
+
+                        iov[0].iov_base = &s->dnshttps_sent;
+                        iov[0].iov_len = 524;
                 };
 
                 iovec_increment(iov, ELEMENTSOF(iov), s->n_written);
@@ -387,6 +390,7 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                 printf("s->read_size: %d\n", s->read_size);
                 printf("s->n_read: %lu\n", s->n_read);
                 printf("sizeof(s->read_size): %lu\n", sizeof(s->read_size));
+                printf("be16toh(s->read_size): %lu\n", be16toh(s->read_size));
 
                 if (s->n_read >= sizeof(s->read_size)) {
 
@@ -460,6 +464,7 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                 dnshttps_stream_split_http(s);
 
                         }
+                        my_debug();
 
                         _cleanup_(dns_packet_unrefp) DnsPacket *p = dns_stream_take_read_packet(s);
                         if (p) {
