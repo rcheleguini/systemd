@@ -289,8 +289,22 @@ static ssize_t dnstls_stream_write(DnsStream *stream, const char *buf, size_t co
         int error, r;
         ssize_t ss;
 
+
+        puts("dnstls_stream_write...");
+
+        int i;
+        for (i = 0; i < count; ++i){
+                printf("%c", stream->dnshttps_sent[i]);
+        }
+
+        /* char *char_buf = (char *)buf; */
+        /* for (i = 0; i < count; ++i){ */
+        /*         printf("%c", char_buf[i]); */
+        /* } */
+
         ERR_clear_error();
         ss = r = SSL_write(stream->dnstls_data.ssl, buf, count);
+
         if (r <= 0) {
                 error = SSL_get_error(stream->dnstls_data.ssl, r);
                 if (IN_SET(error, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE)) {
@@ -346,8 +360,24 @@ ssize_t dnstls_stream_read(DnsStream *stream, void *buf, size_t count) {
         assert(stream->dnstls_data.ssl);
         assert(buf);
 
+        puts("dnstls_stream_read");
+
+
         ERR_clear_error();
         ss = r = SSL_read(stream->dnstls_data.ssl, buf, count);
+
+
+        int i;
+        /* for (i = 0; i < count; ++i){ */
+        /*         printf("%c", stream->dnshttps_sent[i]); */
+        /* } */
+
+        char *char_buf = (char *)buf;
+        for (i = 0; i < 512; ++i){
+                printf("%c", char_buf[i]);
+        }
+
+
         if (r <= 0) {
                 error = SSL_get_error(stream->dnstls_data.ssl, r);
                 if (IN_SET(error, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE)) {

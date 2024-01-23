@@ -1507,6 +1507,31 @@ conf.set('DEFAULT_DNS_OVER_TLS_MODE',
          'DNS_OVER_TLS_' + default_dns_over_tls.underscorify().to_upper())
 conf.set_quoted('DEFAULT_DNS_OVER_TLS_MODE_STR', default_dns_over_tls)
 
+dns_over_https = get_option('dns-over-https')
+if dns_over_https != 'false'
+        if dns_over_https == 'openssl' and not have_openssl
+                error('DNS-over-HTTPS support was requested with openssl, but dependencies are not available')
+        endif
+        if dns_over_https == 'openssl' or have_openssl
+                have_gnuhttps = false
+        endif
+        have = have_gnuhttps or have_openssl
+else
+        have = false
+        have_openssl = false
+endif
+conf.set10('ENABLE_DNS_OVER_HTTPS', have)
+conf.set10('DNS_OVER_HTTPS_USE_OPENSSL', have_openssl)
+
+default_dns_over_https = get_option('default-dns-over-https')
+if default_dns_over_https != 'no' and conf.get('ENABLE_DNS_OVER_HTTPS') == 0
+        message('default-dns-over-https cannot be enabled or set to opportunistic when DNS-over-HTTPS support is disabled. Setting default-dns-over-https to no.')
+        default_dns_over_https = 'no'
+endif
+conf.set('DEFAULT_DNS_OVER_HTTPS_MODE',
+         'DNS_OVER_HTTPS_' + default_dns_over_https.underscorify().to_upper())
+conf.set_quoted('DEFAULT_DNS_OVER_HTTPS_MODE_STR', default_dns_over_https)
+
 default_mdns = get_option('default-mdns')
 conf.set('DEFAULT_MDNS_MODE',
          'RESOLVE_SUPPORT_' + default_mdns.to_upper())

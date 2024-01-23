@@ -265,7 +265,8 @@ void dns_server_packet_received(DnsServer *s, int protocol, DnsServerFeatureLeve
                 if (DNS_SERVER_FEATURE_LEVEL_IS_TLS(level)) {
                         if (s->possible_feature_level == level)
                                 s->n_failed_tls = 0;
-                } else {
+                }
+                else {
                         if (s->possible_feature_level == level)
                                 s->n_failed_tcp = 0;
 
@@ -422,10 +423,14 @@ DnsServerFeatureLevel dns_server_possible_feature_level(DnsServer *s) {
 
         /* Determine the best feature level we care about. If DNSSEC mode is off there's no point in using anything
          * better than EDNS0, hence don't even try. */
-        if (dns_server_get_dnssec_mode(s) != DNSSEC_NO)
+        if (dns_server_get_dnssec_mode(s) != DNSSEC_NO) {
                 best = dns_server_get_dns_over_tls_mode(s) == DNS_OVER_TLS_NO ?
                         DNS_SERVER_FEATURE_LEVEL_DO :
                         DNS_SERVER_FEATURE_LEVEL_TLS_DO;
+                best = dns_server_get_dns_over_https_mode(s) == DNS_OVER_HTTPS_NO ?
+                        DNS_SERVER_FEATURE_LEVEL_DO :
+                        DNS_SERVER_FEATURE_LEVEL_HTTPS_PLAIN;
+        }
         else
                 best = dns_server_get_dns_over_tls_mode(s) == DNS_OVER_TLS_NO ?
                         DNS_SERVER_FEATURE_LEVEL_EDNS0 :
@@ -493,7 +498,8 @@ DnsServerFeatureLevel dns_server_possible_feature_level(DnsServer *s) {
                 } else if (s->packet_bad_opt &&
                            DNS_SERVER_FEATURE_LEVEL_IS_EDNS0(s->possible_feature_level) &&
                            dns_server_get_dnssec_mode(s) != DNSSEC_YES &&
-                           dns_server_get_dns_over_tls_mode(s) != DNS_OVER_TLS_YES) {
+                           dns_server_get_dns_over_tls_mode(s) != DNS_OVER_TLS_YES &&
+                           dns_server_get_dns_over_https_mode(s) != DNS_OVER_HTTPS_YES) {
 
                         /* A reply to one of our EDNS0 queries didn't carry a valid OPT RR, then downgrade to
                          * below EDNS0 levels. After all, some servers generate different responses with and
@@ -588,6 +594,7 @@ DnsServerFeatureLevel dns_server_possible_feature_level(DnsServer *s) {
                 }
         }
 
+        printf("\n possible_feature_level is: %d\n", s->possible_feature_level);
         return s->possible_feature_level;
 }
 
@@ -610,6 +617,9 @@ int dns_server_adjust_opt(DnsServer *server, DnsPacket *packet, DnsServerFeature
                 return 0;
 
         edns_do = level >= DNS_SERVER_FEATURE_LEVEL_DO;
+
+        /* TODO: fix here for dns over https */
+        edns_do = false;
 
         udp_size = udp_header_size(server->family);
 
@@ -954,6 +964,12 @@ DnsOverTlsMode dns_server_get_dns_over_tls_mode(DnsServer *s) {
         return manager_get_dns_over_tls_mode(s->manager);
 }
 
+DnsOverHttpsMode dns_server_get_dns_over_https_mode(DnsServer *s) {
+        assert(s);
+
+        return manager_get_dns_over_https_mode(s->manager);
+}
+
 void dns_server_flush_cache(DnsServer *s) {
         DnsServer *current;
         DnsScope *scope;
@@ -1087,12 +1103,13 @@ static const char* const dns_server_type_table[_DNS_SERVER_TYPE_MAX] = {
 DEFINE_STRING_TABLE_LOOKUP(dns_server_type, DnsServerType);
 
 static const char* const dns_server_feature_level_table[_DNS_SERVER_FEATURE_LEVEL_MAX] = {
-        [DNS_SERVER_FEATURE_LEVEL_TCP]       = "TCP",
-        [DNS_SERVER_FEATURE_LEVEL_UDP]       = "UDP",
-        [DNS_SERVER_FEATURE_LEVEL_EDNS0]     = "UDP+EDNS0",
-        [DNS_SERVER_FEATURE_LEVEL_TLS_PLAIN] = "TLS+EDNS0",
-        [DNS_SERVER_FEATURE_LEVEL_DO]        = "UDP+EDNS0+DO",
-        [DNS_SERVER_FEATURE_LEVEL_TLS_DO]    = "TLS+EDNS0+DO",
+        [DNS_SERVER_FEATURE_LEVEL_TCP]         = "TCP",
+        [DNS_SERVER_FEATURE_LEVEL_UDP]         = "UDP",
+        [DNS_SERVER_FEATURE_LEVEL_EDNS0]       = "UDP+EDNS0",
+        [DNS_SERVER_FEATURE_LEVEL_TLS_PLAIN]   = "TLS+EDNS0",
+        [DNS_SERVER_FEATURE_LEVEL_HTTPS_PLAIN] = "HTTPS+EDNS0",
+        [DNS_SERVER_FEATURE_LEVEL_DO]          = "UDP+EDNS0+DO",
+        [DNS_SERVER_FEATURE_LEVEL_TLS_DO]      = "TLS+EDNS0+DO",
 };
 DEFINE_STRING_TABLE_LOOKUP(dns_server_feature_level, DnsServerFeatureLevel);
 

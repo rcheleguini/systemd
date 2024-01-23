@@ -217,3 +217,6 @@ DnsTransactionSource dns_transaction_source_from_string(const char *s) _pure_;
                                      (p) == DNS_PROTOCOL_MDNS ?         \
                                      MDNS_TRANSACTION_ATTEMPTS_MAX :    \
                                      DNS_TRANSACTION_ATTEMPTS_MAX)
+
+/* TODO: this is needed, can't simply include the whole resolved-dnshttps.h?' */
+int dnshttps_packet_to_base64url(DnsTransaction *t);

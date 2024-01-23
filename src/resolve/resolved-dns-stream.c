@@ -326,9 +326,20 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
             s->write_packet &&
             s->n_written < sizeof(s->write_size) + s->write_packet->size) {
 
+                puts("EPOLLOUT");
+                puts("about to create write iov...");
+                /* struct iovec iov[] = { */
+                /*         IOVEC_MAKE(&s->write_size, sizeof(s->write_size)), */
+                /*         IOVEC_MAKE(DNS_PACKET_DATA(s->write_packet), s->write_packet->size), */
+                /* }; */
+
+                int i;
+                for (i = 0; i < 524; ++i){
+                        printf("%c", s->dnshttps_sent[i]);
+                }
                 struct iovec iov[] = {
-                        IOVEC_MAKE(&s->write_size, sizeof(s->write_size)),
-                        IOVEC_MAKE(DNS_PACKET_DATA(s->write_packet), s->write_packet->size),
+                        IOVEC_MAKE(&s->dnshttps_sent, 524),
+                        IOVEC_MAKE(&s->dnshttps_write_size, sizeof(s->dnshttps_write_size)),
                 };
 
                 iovec_increment(iov, ELEMENTSOF(iov), s->n_written);
@@ -354,8 +365,10 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                (!s->read_packet ||
                 s->n_read < sizeof(s->read_size) + s->read_packet->size)) {
 
+                puts("EPOLLIN");
                 if (s->n_read < sizeof(s->read_size)) {
                         ssize_t ss;
+
 
                         ss = dns_stream_read(s, (uint8_t*) &s->read_size + s->n_read, sizeof(s->read_size) - s->n_read);
                         if (ss < 0) {
@@ -370,6 +383,11 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                         }
                 }
 
+
+                printf("s->read_size: %d\n", s->read_size);
+                printf("s->n_read: %lu\n", s->n_read);
+                printf("sizeof(s->read_size): %lu\n", sizeof(s->read_size));
+
                 if (s->n_read >= sizeof(s->read_size)) {
 
                         if (be16toh(s->read_size) < DNS_PACKET_HEADER_SIZE)
@@ -379,10 +397,12 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                 ssize_t ss;
 
                                 if (!s->read_packet) {
+                                        puts("about to create new read packet...");
                                         r = dns_packet_new(&s->read_packet, s->protocol, be16toh(s->read_size), DNS_PACKET_SIZE_MAX);
                                         if (r < 0)
                                                 return dns_stream_complete(s, -r);
 
+                                        my_debug();
                                         s->read_packet->size = be16toh(s->read_size);
                                         s->read_packet->ipproto = IPPROTO_TCP;
                                         s->read_packet->family = s->peer.sa.sa_family;
@@ -424,6 +444,23 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
 
                         /* Are we done? If so, call the packet handler and re-enable EPOLLIN for the
                          * event source if necessary. */
+
+                        /* parse http and unwrap packet data */
+                        if (s->encrypted_dnshttps){
+                                int i = 0;
+                                char* charPtr = (char*)s->read_packet;
+
+
+
+                                for (i = 0; i < s->read_packet->size; ++i){
+                                        printf("%c", charPtr[i * sizeof(char)]);
+                                }
+                                puts("");
+                                puts("split http header...");
+                                dnshttps_stream_split_http(s);
+
+                        }
+
                         _cleanup_(dns_packet_unrefp) DnsPacket *p = dns_stream_take_read_packet(s);
                         if (p) {
                                 assert(s->on_packet);
