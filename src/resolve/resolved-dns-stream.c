@@ -406,7 +406,6 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                                         if (r < 0)
                                                 return dns_stream_complete(s, -r);
 
-                                        my_debug();
                                         s->read_packet->size = be16toh(s->read_size);
                                         s->read_packet->ipproto = IPPROTO_TCP;
                                         s->read_packet->family = s->peer.sa.sa_family;
@@ -453,18 +452,10 @@ static int on_stream_io(sd_event_source *es, int fd, uint32_t revents, void *use
                         if (s->encrypted_dnshttps){
                                 int i = 0;
                                 char* charPtr = (char*)s->read_packet;
-
-
-
-                                for (i = 0; i < s->read_packet->size; ++i){
-                                        printf("%c", charPtr[i * sizeof(char)]);
-                                }
-                                puts("");
                                 puts("split http header...");
                                 dnshttps_stream_split_http(s);
 
                         }
-                        my_debug();
 
                         _cleanup_(dns_packet_unrefp) DnsPacket *p = dns_stream_take_read_packet(s);
                         if (p) {

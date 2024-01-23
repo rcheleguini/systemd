@@ -20,7 +20,7 @@
 int dnshttps_stream_split_http(DnsStream *s){
         puts("dnshttps_split_http");
 
-        uint8_t *p_data;
+        char *p_data;
         p_data = DNS_PACKET_DATA(s->read_packet);
 
         int i = 0;
@@ -135,11 +135,9 @@ void remove_padding(char *str) {
 int dnshttps_packet_to_base64url(DnsTransaction *t){
         printf("\n in tcp, about to make base64url...\n");
 
-        DnsPacketHeader *p_header = DNS_PACKET_HEADER(t->sent);
+        /* DnsPacketHeader *p_header = DNS_PACKET_HEADER(t->sent); */
         uint8_t *p_data = DNS_PACKET_DATA(t->sent);
         uint16_t p_id = DNS_PACKET_ID(t->sent);
-
-        uint16_t i = 0;
 
         /* struct DnshttpsRequest get_request; */
 
@@ -188,8 +186,4 @@ int dnshttps_packet_to_base64url(DnsTransaction *t){
 
 
         return 0;
-}
-
-void my_debug(){
-
 }

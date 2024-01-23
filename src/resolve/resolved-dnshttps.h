@@ -6,39 +6,6 @@
 #error This source file requires DNS-over-HTTPS to be enabled and OpenSSL to be available.
 #endif
 
-#include <openssl/ssl.h>
-#include <stdbool.h>
-
-
-struct DnsHttpsManagerData {
-        SSL_CTX *ctx;
-};
-
-struct DnsHttpsServerData {
-        SSL_SESSION *session;
-};
-
-struct DnsHttpsStreamData {
-        int handshake;
-        bool shutdown;
-        SSL *ssl;
-        BUF_MEM *write_buffer;
-        size_t buffer_offset;
-};
-
-void ssl_with_fd(int sockfd);
-
-
-/* struct __attribute__((__packed__)) dns_header { */
-struct dns_header {
-  char id[2];
-  char flags[2];
-  char qdcount[2];
-  char ancount[2];
-  char nscount[2];
-  char arcount[2];
-};
-
 typedef struct {
   char *http_status;
   char *http_header;
@@ -58,6 +25,4 @@ typedef struct {
 
 int dnshttps_stream_split_http(DnsStream *s);
 dnshttps_response *parse_dnshttps_response(char *response);
-int dnshttps_stream_split_http(DnsStream *s);
 void remove_padding(char *str);
-void my_debug();
