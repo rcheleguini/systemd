@@ -17,6 +17,7 @@
 #include "resolved-llmnr.h"
 #include "string-table.h"
 
+
 #define TRANSACTIONS_MAX 4096
 #define TRANSACTION_TCP_TIMEOUT_USEC (10U*USEC_PER_SEC)
 
@@ -623,6 +624,51 @@ static int dns_transaction_on_stream_packet(DnsTransaction *t, DnsStream *s, Dns
                 dns_transaction_gc(t);
 
         return 0;
+}
+
+static void dns_transaction_on_curl_response(CurlGlue *g, CURL *curl, CURLcode result) {
+        DnsTransaction *t;
+        int r;
+
+        assert(g);
+        assert(curl);
+        /* assert(result); */
+
+        curl_easy_setopt(curl, CURLOPT_PRIVATE, &t);
+
+        if (result != CURLE_OK) {
+                r = log_error_errno(SYNTHETIC_ERRNO(EIO), "HTTP request failed: %s", curl_easy_strerror(result));
+                goto finish;
+        }
+
+
+
+ finish:
+        dns_transaction_complete(g->userdata, DNS_TRANSACTION_INVALID_REPLY);
+
+        /* dns_transaction_close_connection(t, true); */
+
+        /* if (dns_packet_validate_reply(p) <= 0) { */
+        /*         log_debug("Invalid TCP reply packet."); */
+        /*         dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY); */
+        /*         return 0; */
+        /* } */
+
+        /* dns_scope_check_conflicts(t->scope, p); */
+
+        /* t->block_gc++; */
+        /* dns_transaction_process_reply(t, p, encrypted); */
+        /* t->block_gc--; */
+
+        /* /\* If the response wasn't useful, then complete the transition */
+        /*  * now. After all, we are the worst feature set now with TCP */
+        /*  * sockets, and there's really no point in retrying. *\/ */
+        /* if (t->state == DNS_TRANSACTION_PENDING) */
+        /*         dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY); */
+        /* else */
+        /*         dns_transaction_gc(t); */
+
+        /* return 0; */
 }
 
 static int on_stream_complete(DnsStream *s, int error) {
@@ -1605,29 +1651,74 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
 }
 
 static int dns_transaction_emit_curl(DnsTransaction *t) {
-        /* _cleanup_close_ int fd = -EBADF; */
-        int fd = -EBADF;
+        usec_t stream_timeout_usec = DNS_STREAM_DEFAULT_TIMEOUT_USEC;
         union sockaddr_union sa;
+        _cleanup_(curl_glue_unrefp) CurlGlue *g = NULL;
+        _cleanup_(sd_event_unrefp) sd_event *e = NULL;
+        _cleanup_free_ char *u = NULL;
+        CURL *curl;
         int r;
 
         assert(t);
+        assert(t->sent);
 
-        r = dns_transaction_pick_server(t);
-        if (r < 0)
-                return r;
+        dns_transaction_close_connection(t, true);
 
-        fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa);
+        if (t->scope->protocol == DNS_PROTOCOL_DNS) {
+                r = dns_transaction_pick_server(t);
+                if (r < 0)
+                        return r;
 
-        r = dnshttps_curl_send(t, fd, t->server ? t->server->family : AF_UNSPEC, t->sent);
-        if (r < 0)
-                return r;
+                if (manager_server_is_stub(t->scope->manager, t->server))
+                        return -ELOOP;
 
-        dns_transaction_stop_timeout(t);
+                r = curl_glue_new(&t->glue, e);
+                if (r < 0)
+                        return r;
 
-        /* dns_transaction_reset_answer(t); */
+                t->glue->on_finished = dns_transaction_on_curl_response;
+
+                // Process url
+                t->url = "https://1.1.1.1/dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE";
+
+                r = curl_glue_make(&t->curl, t->url, t);
+                if (r < 0)
+                        return r;
+
+                r = curl_glue_add(t->glue, t->curl);
+                if (r < 0)
+                        return r;
+
+        }
+
 
         return 0;
 }
+
+/* static int dns_transaction_emit_curl(DnsTransaction *t) { */
+/*         /\* _cleanup_close_ int fd = -EBADF; *\/ */
+/*         int fd = -EBADF; */
+/*         union sockaddr_union sa; */
+/*         int r; */
+
+/*         assert(t); */
+
+/*         r = dns_transaction_pick_server(t); */
+/*         if (r < 0) */
+/*                 return r; */
+
+/*         fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa); */
+
+/*         r = dnshttps_curl_send(t, fd, t->server ? t->server->family : AF_UNSPEC, t->sent); */
+/*         if (r < 0) */
+/*                 return r; */
+
+/*         dns_transaction_stop_timeout(t); */
+
+/*         /\* dns_transaction_reset_answer(t); *\/ */
+
+/*         return 0; */
+/* } */
 
 static int on_transaction_timeout(sd_event_source *s, usec_t usec, void *userdata) {
         DnsTransaction *t = ASSERT_PTR(userdata);

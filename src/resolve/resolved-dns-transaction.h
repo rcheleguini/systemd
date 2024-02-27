@@ -3,6 +3,7 @@
 
 #include "sd-event.h"
 #include "in-addr-util.h"
+#include <curl/curl.h>
 
 typedef struct DnsTransaction DnsTransaction;
 typedef struct DnsTransactionFinder DnsTransactionFinder;
@@ -14,6 +15,7 @@ typedef enum DnsTransactionSource DnsTransactionSource;
 #include "resolved-dns-packet.h"
 #include "resolved-dns-question.h"
 #include "resolved-dns-server.h"
+#include "curl-util.h"
 
 enum DnsTransactionState {
         DNS_TRANSACTION_NULL,
@@ -92,6 +94,11 @@ struct DnsTransaction {
 
         /* TCP connection logic, if we need it */
         DnsStream *stream;
+
+        /* HTTPS connection logic, if we need it */
+        CurlGlue *glue;
+        CURL *curl;
+        char *url;
 
         /* The active server */
         DnsServer *server;
