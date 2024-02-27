@@ -806,9 +806,9 @@ static int dns_transaction_emit_tcp(DnsTransaction *t) {
 
                         printf("\nconfirmed, about to connect tls...\n");
                         assert(t->server);
-                        r = dnstls_stream_connect_tls(s, t->server);
-                        if (r < 0)
-                                return r;
+                        /* r = dnstls_stream_connect_tls(s, t->server); */
+                        /* if (r < 0) */
+                        /*         return r; */
                 }
 #endif
 
@@ -1557,15 +1557,9 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
                 if (t->current_feature_level < DNS_SERVER_FEATURE_LEVEL_UDP || DNS_SERVER_FEATURE_LEVEL_IS_TLS(t->current_feature_level))
                         return -EAGAIN; /* Sorry, can't do UDP, try TCP! */
 
-                /* TODO: Decide which one to remove, need better understanding here */
                 if (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level)) {
                         printf("\n forced dnshttps confirmed, routing to tcp...\n");
-                        return -EAGAIN; /* Sorry, can't do UDP, try TCP! */
-                }
-
-                if (t->current_feature_level < DNS_SERVER_FEATURE_LEVEL_UDP || DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level)) {
-                        printf("\n dnshttps confirmed, routing to tcp...\n");
-                        return -EAGAIN; /* Sorry, can't do UDP, try TCP! */
+                        return -EAGAIN;
                 }
 
                 if (!t->bypass && !dns_server_dnssec_supported(t->server) && dns_type_is_dnssec(dns_transaction_key(t)->type))
@@ -1606,6 +1600,31 @@ static int dns_transaction_emit_udp(DnsTransaction *t) {
                 return r;
 
         dns_transaction_reset_answer(t);
+
+        return 0;
+}
+
+static int dns_transaction_emit_curl(DnsTransaction *t) {
+        /* _cleanup_close_ int fd = -EBADF; */
+        int fd = -EBADF;
+        union sockaddr_union sa;
+        int r;
+
+        assert(t);
+
+        r = dns_transaction_pick_server(t);
+        if (r < 0)
+                return r;
+
+        fd = dns_scope_socket_tcp(t->scope, AF_UNSPEC, NULL, t->server, dns_transaction_port(t), &sa);
+
+        r = dnshttps_curl_send(t, fd, t->server ? t->server->family : AF_UNSPEC, t->sent);
+        if (r < 0)
+                return r;
+
+        dns_transaction_stop_timeout(t);
+
+        /* dns_transaction_reset_answer(t); */
 
         return 0;
 }
@@ -2222,10 +2241,15 @@ int dns_transaction_go(DnsTransaction *t) {
                 r = dns_transaction_emit_udp(t);
                 if (r == -EMSGSIZE)
                         log_debug("Sending query via TCP since it is too large.");
+                else if ((r == -EAGAIN &&
+                          (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level))))
+                        log_debug("Sending query via curl/HTTPS.");
                 else if (r == -EAGAIN)
                         log_debug("Sending query via TCP since UDP isn't supported or DNS-over-TLS or DNS-over-HTTPS is selected.");
                 else if (r == -EPERM)
                         log_debug("Sending query via TCP since UDP is blocked.");
+                if ((r == -EAGAIN &&                       (DNS_SERVER_FEATURE_LEVEL_IS_HTTPS(t->current_feature_level))))
+                        r = dns_transaction_emit_curl(t);
                 if (IN_SET(r, -EMSGSIZE, -EAGAIN, -EPERM))
                         r = dns_transaction_emit_tcp(t);
         }
@@ -2272,8 +2296,10 @@ int dns_transaction_go(DnsTransaction *t) {
                 return dns_transaction_go(t);
         }
 
+        puts("almost end transaction_go");
         usec_t timeout = transaction_get_resend_timeout(t);
-        r = dns_transaction_setup_timeout(t, timeout, usec_add(ts, timeout));
+        r = dns_transaction_setup_timeout(t, TRANSACTION_TCP_TIMEOUT_USEC, usec_add(ts, timeout));
+        /* r = dns_transaction_setup_timeout(t, timeout, usec_add(ts, timeout)); */
         if (r < 0)
                 return r;
 

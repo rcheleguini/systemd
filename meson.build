@@ -1339,11 +1339,6 @@ libopenssl = dependency('openssl',
                         required : get_option('openssl'))
 conf.set10('HAVE_OPENSSL', libopenssl.found())
 
-libllhttp = dependency('libllhttp',
-                        version : '>= 9.1',
-                        required : get_option('libllhttp'))
-conf.set10('HAVE_LIBLLHTTP', libllhttp.found())
-
 libp11kit = dependency('p11-kit-1',
                        version : '>= 0.23.3',
                        required : get_option('p11kit'))
