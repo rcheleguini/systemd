@@ -273,6 +273,7 @@ libbasic = static_library(
         fundamental_sources,
         include_directories : basic_includes,
         dependencies : [libcap,
+                        libcurl,
                         libm,
                         librt,
                         threads,
