@@ -119,7 +119,7 @@ endif
 
 if conf.get('ENABLE_DNS_OVER_HTTPS') == 1
         systemd_resolved_sources += files(
-                'resolved-dnshttps-openssl.c', 'curl-util.h', 'curl-util.c',
+                'resolved-dnshttps-openssl.c'
         )
         systemd_resolved_dependencies += libcurl
 endif

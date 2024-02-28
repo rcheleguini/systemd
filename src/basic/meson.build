@@ -38,6 +38,7 @@ basic_sources = files(
         'hash-funcs.c',
         'hashmap.c',
         'hexdecoct.c',
+        'curl-util.c',
         'hmac.c',
         'hostname-util.c',
         'in-addr-util.c',
