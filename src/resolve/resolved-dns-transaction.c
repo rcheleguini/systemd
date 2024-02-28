@@ -626,25 +626,101 @@ static int dns_transaction_on_stream_packet(DnsTransaction *t, DnsStream *s, Dns
         return 0;
 }
 
+static size_t dnshttps_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userdata) {
+        DnsTransaction *t = ASSERT_PTR(userdata);
+        size_t sz = size * nmemb;
+        int r;
+
+        // Need packet validation
+
+        puts("at write callback...");
+
+        // Print the received body
+        printf("Received Body:\n%.*s", (int)(size * nmemb), (char*)contents);
+
+        if (!GREEDY_REALLOC(t->payload, t->payload_size + sz)) {
+                r = log_oom();
+                goto fail;
+        }
+
+        /* memcpy(t->payload + t->payload_size, contents, sz); */
+        memcpy(t->payload + t->payload_size, contents, sz);
+        t->payload_size += sz;
+
+        return sz;
+
+        /* memcpy(p_data, contents, sz); */
+ fail:
+        dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY);
+        return -1;
+}
+
+static int dns_transaction_curl_recv(DnsTransaction *t, DnsPacket **p) {
+        int r;
+
+        size_t ms;
+
+        ms = t->payload_size;
+
+        r = dns_packet_new(p, DNS_PROTOCOL_DNS, ms, DNS_PACKET_SIZE_MAX);
+        if (r < 0)
+                return r;
+
+        log_debug("Received HTTP payload of size %lu", t->payload_size);
+        return 0;
+
+}
+
 static void dns_transaction_on_curl_response(CurlGlue *g, CURL *curl, CURLcode result) {
-        DnsTransaction *t;
+        DnsTransaction *t = NULL;
+        _cleanup_(dns_packet_unrefp) DnsPacket *p = NULL;
+        int status;
         int r;
 
         assert(g);
         assert(curl);
-        /* assert(result); */
 
-        curl_easy_setopt(curl, CURLOPT_PRIVATE, &t);
+        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &t);
 
         if (result != CURLE_OK) {
                 r = log_error_errno(SYNTHETIC_ERRNO(EIO), "HTTP request failed: %s", curl_easy_strerror(result));
-                goto finish;
+                status = DNS_TRANSACTION_INVALID_REPLY;
+                /* goto finish; */
         }
+
+        r = dns_transaction_curl_recv(t, &p);
+        if (r < 0){
+                log_debug_errno(r, "HTTP payload receive failure.");
+                dns_transaction_complete_errno(t, r);
+        }
+
+        // Lets transfer the received payload to packet struct
+        uint8_t *p_data = DNS_PACKET_DATA(p);
+        memcpy(p_data, t->payload, t->payload_size);
+
+        r = dns_packet_validate_reply(p);
+        if (r < 0) {
+                log_debug_errno(r, "Received invalid DNS packet as response, ignoring: %m");
+        }
+        if (r == 0) {
+                log_debug("Received inappropriate DNS packet as response, ignoring.");
+        }
+
+        // At this point the t->received copy happens
+        dns_transaction_process_reply(t, p, false);
+
+
+        // validate packet at some point
+        // data is at t->payload and t->payload_size
+
+        /* TODO:  create t->received struct
+
+        status = DNS_TRANSACTION_SUCCESS;
 
 
 
  finish:
-        dns_transaction_complete(g->userdata, DNS_TRANSACTION_INVALID_REPLY);
+        dns_transaction_complete(t, status);
 
         /* dns_transaction_close_connection(t, true); */
 
@@ -1678,12 +1754,18 @@ static int dns_transaction_emit_curl(DnsTransaction *t) {
 
                 t->glue->on_finished = dns_transaction_on_curl_response;
 
-                // Process url
+                // Process url, hard coded
                 t->url = "https://1.1.1.1/dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE";
 
                 r = curl_glue_make(&t->curl, t->url, t);
                 if (r < 0)
                         return r;
+
+                if (curl_easy_setopt(t->curl, CURLOPT_WRITEFUNCTION, dnshttps_curl_write_callback) != CURLE_OK)
+                        return -EIO;
+
+                if (curl_easy_setopt(t->curl, CURLOPT_WRITEDATA, t) != CURLE_OK)
+                        return -EIO;
 
                 r = curl_glue_add(t->glue, t->curl);
                 if (r < 0)

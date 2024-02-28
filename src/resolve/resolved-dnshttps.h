@@ -21,6 +21,7 @@ typedef struct {
         size_t len;
 } http_header;
 
+
 int dnshttps_curl_send(DnsTransaction *t, int fd, int af, DnsPacket *p);
 int dnshttps_stream_extract_dns(DnsStream *s);
 int dnshttps_packet_to_base64url(DnsTransaction *t);

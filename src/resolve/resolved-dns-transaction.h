@@ -99,6 +99,8 @@ struct DnsTransaction {
         CurlGlue *glue;
         CURL *curl;
         char *url;
+        uint8_t *payload;
+        size_t payload_size;
 
         /* The active server */
         DnsServer *server;

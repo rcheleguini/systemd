@@ -22,7 +22,6 @@ static void my_debug(){
 
 }
 
-
 static int curl_dnshttps_packet_to_base64url(DnsTransaction *t, char **output){
         printf("\n in tcp, about to make base64url...\n");
 
