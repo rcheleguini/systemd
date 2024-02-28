@@ -16,7 +16,7 @@
 #include "resolved-dnshttps.h"
 #include "resolved-llmnr.h"
 #include "string-table.h"
-
+#include "hexdecoct.h"
 
 #define TRANSACTIONS_MAX 4096
 #define TRANSACTION_TCP_TIMEOUT_USEC (10U*USEC_PER_SEC)
@@ -697,6 +697,8 @@ static void dns_transaction_on_curl_response(CurlGlue *g, CURL *curl, CURLcode r
         // Lets transfer the received payload to packet struct
         uint8_t *p_data = DNS_PACKET_DATA(p);
         memcpy(p_data, t->payload, t->payload_size);
+
+        p->size = t->payload_size;
 
         r = dns_packet_validate_reply(p);
         if (r < 0) {
@@ -1754,8 +1756,31 @@ static int dns_transaction_emit_curl(DnsTransaction *t) {
 
                 t->glue->on_finished = dns_transaction_on_curl_response;
 
+                // move this to external func
+                uint8_t *s_data = DNS_PACKET_DATA(t->sent);
+                _cleanup_free_ char *dnshttps_url = NULL;
+                size_t url_len;
+                r = base64mem_full(s_data, t->sent->size, MAX_URL_LENGTH, &dnshttps_url);
+                if (r < 0){
+                        log_debug_errno(r, "Failed to encode DNS packet to base64.");
+                        return r;
+                }
+                // clean base64 trailing charecters
+                url_len = strlen(dnshttps_url);
+                while (url_len > 0 && dnshttps_url[url_len - 1] == '=') {
+                        dnshttps_url[--url_len] = '\0';
+                }
+
+                char url[512] = "";
+                strcpy(url, "https://");
+                strcat(url, t->server->server_string);
+                strcat(url, "/dns-query?dns=");
+                strcat(url, dnshttps_url);
+
+                t->url = url;
+
                 // Process url, hard coded
-                t->url = "https://1.1.1.1/dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE";
+                /* t->url = "https://1.1.1.1/dns-query?dns=AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE"; */
 
                 r = curl_glue_make(&t->curl, t->url, t);
                 if (r < 0)
