@@ -1,10 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
-#if ENABLE_DNS_OVER_HTTPS
-#include <curl/curl.h>
-#endif
-
 #include "sd-event.h"
 #include "in-addr-util.h"
 
@@ -13,7 +9,6 @@
 #include "resolved-dns-dnssec.h"
 #include "resolved-dns-server.h"
 #include "resolved-forward.h"
-#include "curl-util.h"
 
 
 typedef enum DnsTransactionState {
@@ -95,9 +90,8 @@ typedef struct DnsTransaction {
         DnsStream *stream;
 #if ENABLE_DNS_OVER_HTTPS
         /* HTTPS connection logic, if we need it */
-        CurlGlue *glue;
-        CURL *curl;
-        char *url;
+        CurlSlot *curl_slot;
+        struct curl_slist *curl_resolve_rules;
         uint8_t *payload;
         size_t payload_size;
         bool valid_dns_message;

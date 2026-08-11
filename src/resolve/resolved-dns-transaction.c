@@ -88,6 +88,21 @@ static void dns_transaction_close_connection(
 
         t->dns_udp_event_source = sd_event_source_disable_unref(t->dns_udp_event_source);
 
+#if ENABLE_DNS_OVER_HTTPS
+        /* Unref the slot first: this removes the easy handle from curl's multi and frees it. Only then
+         * free the resolve rules slist, since libcurl doesn't take a copy of it and it must outlive the
+         * easy handle. Called both to tear down after a completed/failed/cancelled transaction and right
+         * before a new request is emitted, so also reset the accumulated response state. */
+        t->curl_slot = curl_slot_unref(t->curl_slot);
+        if (t->curl_resolve_rules) {
+                sym_curl_slist_free_all(t->curl_resolve_rules);
+                t->curl_resolve_rules = NULL;
+        }
+        t->payload = mfree(t->payload);
+        t->payload_size = 0;
+        t->valid_dns_message = false;
+#endif
+
         /* If we have a UDP socket where we sent a packet, but never received one, then add it to the socket
          * graveyard, instead of closing it right away. That way it will stick around for a moment longer,
          * and the reply we might still get from the server will be eaten up instead of resulting in an ICMP
@@ -2026,9 +2041,11 @@ static size_t dns_transaction_curl_header_callback(void *contents, size_t size, 
 
         assert(contents);
 
-        code = curl_easy_getinfo(t->curl, CURLINFO_RESPONSE_CODE, &status);
-        if (code != CURLE_OK)
-                return log_error_errno(SYNTHETIC_ERRNO(EIO), "Failed to retrieve response code: %s", curl_easy_strerror(code));
+        code = sym_curl_easy_getinfo(curl_slot_get_easy(t->curl_slot), CURLINFO_RESPONSE_CODE, &status);
+        if (code != CURLE_OK) {
+                log_error_errno(SYNTHETIC_ERRNO(EIO), "Failed to retrieve response code: %s", sym_curl_easy_strerror(code));
+                return 0;
+        }
 
         if (status >= 200 && status <= 299) {
                 r = curl_header_strdup(contents, sz, "Content-Type:", &content_header);
@@ -2036,12 +2053,8 @@ static size_t dns_transaction_curl_header_callback(void *contents, size_t size, 
                         log_oom();
                         return 0;
                 }
-                if (r > 0) {
-                        r = strcmp("application/dns-message", content_header);
-                        if (r == 0)
-                                t->valid_dns_message = true;
-                        return sz;
-                }
+                if (r > 0 && streq(content_header, "application/dns-message"))
+                        t->valid_dns_message = true;
         }
 
         return sz;
@@ -2051,15 +2064,21 @@ static size_t dns_transaction_curl_write_callback(void *contents, size_t size, s
         DnsTransaction *t = ASSERT_PTR(userdata);
         size_t sz = size * nmemb;
 
-        t->payload = memdup(contents, sz);
-        if (!t->payload) {
-                log_debug("Failed to extract HTTP payload to further processing");
-                dns_transaction_complete(t, DNS_TRANSACTION_INVALID_REPLY);
-                /* Per libcurl API, returning a byte count different from sz signals a transfer error. */
+        assert(contents);
+
+        if (t->payload_size + sz > DNS_PACKET_SIZE_MAX) {
+                log_debug("HTTP payload exceeds maximum DNS packet size, aborting");
                 return 0;
         }
 
+        if (!GREEDY_REALLOC(t->payload, t->payload_size + sz)) {
+                log_oom_debug();
+                return 0;
+        }
+
+        memcpy(t->payload + t->payload_size, contents, sz);
         t->payload_size += sz;
+
         return sz;
 }
 
@@ -2106,19 +2125,16 @@ static int dns_transaction_curl_make_url(DnsTransaction *t, char **url) {
         return 0;
 }
 
-static void dns_transaction_curl_on_response(CurlGlue *g, CURL *curl, CURLcode result) {
+static int dns_transaction_curl_on_finished(CurlSlot *slot, CURL *curl, CURLcode result, void *userdata) {
         _cleanup_(dns_packet_unrefp) DnsPacket *p = NULL;
-        DnsTransaction *t = NULL;
+        DnsTransaction *t = ASSERT_PTR(userdata);
         int status;
         int r;
 
-        assert(g);
         assert(curl);
 
-        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &t);
-
         if (result != CURLE_OK) {
-                log_error_errno(SYNTHETIC_ERRNO(EIO), "HTTP request failed: %s", curl_easy_strerror(result));
+                log_debug_errno(SYNTHETIC_ERRNO(EIO), "HTTP request failed: %s", sym_curl_easy_strerror(result));
                 status = DNS_TRANSACTION_INVALID_REPLY;
                 goto finish;
         }
@@ -2133,7 +2149,7 @@ static void dns_transaction_curl_on_response(CurlGlue *g, CURL *curl, CURLcode r
         if (r < 0) {
                 log_debug_errno(r, "HTTP payload receive failure");
                 dns_transaction_complete_errno(t, r);
-                return;
+                return 0;
         }
 
         /* Transfer the received payload to transaction/packet struct */
@@ -2143,82 +2159,101 @@ static void dns_transaction_curl_on_response(CurlGlue *g, CURL *curl, CURLcode r
         p->size = t->payload_size;
 
         r = dns_packet_validate_reply(p);
-        if (r < 0)
+        if (r < 0) {
                 log_debug_errno(r, "Received invalid DNS packet as response, ignoring: %m");
-
-        if (r == 0)
+                status = DNS_TRANSACTION_INVALID_REPLY;
+                goto finish;
+        }
+        if (r == 0) {
                 log_debug("Received inappropriate DNS packet as response, ignoring");
+                status = DNS_TRANSACTION_INVALID_REPLY;
+                goto finish;
+        }
 
-        dns_transaction_process_reply(t, p, false);
+        /* DoH is always encrypted, so mark the answer as such */
+        dns_transaction_process_reply(t, p, /* encrypted= */ true);
 
-        return;
+        return 0;
  finish:
         dns_transaction_complete(t, status);
+        return 0;
 }
 
 static int dns_transaction_emit_curl(DnsTransaction *t) {
-        _cleanup_(sd_event_unrefp) sd_event *e = NULL;
-        _cleanup_free_ char *rule = NULL;
+        _cleanup_free_ char *rule = NULL, *url = NULL;
+        _cleanup_(curl_easy_cleanupp) CURL *easy = NULL;
+        Manager *m;
         int r;
 
         assert(t);
         assert(t->sent);
+        assert(t->scope);
+        assert(t->scope->manager);
+
+        m = t->scope->manager;
 
         dns_transaction_close_connection(t, true);
 
-        if (t->scope->protocol == DNS_PROTOCOL_DNS) {
-                r = dns_transaction_pick_server(t);
-                if (r < 0)
-                        return r;
-
-                if (manager_server_is_stub(t->scope->manager, t->server))
-                        return -ELOOP;
-
-                r = curl_glue_new(&t->glue, e);
-                if (r < 0)
-                        return r;
-
-                t->glue->on_finished = dns_transaction_curl_on_response;
-
-                r = dns_transaction_curl_make_url(t, &t->url);
-                if (r < 0)
-                        return r;
-
-                r = curl_glue_make(&t->curl, t->url, t);
-                if (r < 0)
-                        return r;
-
-                if (curl_easy_setopt(t->curl, CURLOPT_HEADERFUNCTION, dns_transaction_curl_header_callback) != CURLE_OK)
-                        return -EIO;
-
-                if (curl_easy_setopt(t->curl, CURLOPT_HEADERDATA, t) != CURLE_OK)
-                        return -EIO;
-
-                if (curl_easy_setopt(t->curl, CURLOPT_WRITEFUNCTION, dns_transaction_curl_write_callback) != CURLE_OK)
-                        return -EIO;
-
-                if (curl_easy_setopt(t->curl, CURLOPT_WRITEDATA, t) != CURLE_OK)
-                        return -EIO;
-
-                // Prevents libcurl's native name lookups
-                r = asprintf(&rule, "%s:443:%s", t->server->server_string, t->server->server_string);
-                if (r < 0) {
-                        log_debug("Failed to compound IP resolution to CURLOPT_RESOLVE parameter");
-                        return r;
-                }
-
-                t->glue->resolve_rules = curl_slist_append(NULL, rule);
-                if (curl_easy_setopt(t->curl, CURLOPT_RESOLVE, t->glue->resolve_rules) != CURLE_OK)
-                        return -EIO;
-
-
-                log_debug("Emitting HTTPS request via curl for transaction %" PRIu16, t->id);
-                r = curl_glue_add(t->glue, t->curl);
-                if (r < 0)
-                        return r;
-        } else
+        if (t->scope->protocol != DNS_PROTOCOL_DNS)
                 /* TODO: Is this the right error code here? */
                 return -ELOOP;
+
+        r = dns_transaction_pick_server(t);
+        if (r < 0)
+                return r;
+
+        if (manager_server_is_stub(m, t->server))
+                return -ELOOP;
+
+        if (!m->curl_glue) {
+                r = curl_glue_new(&m->curl_glue, m->event);
+                if (r < 0)
+                        return r;
+        }
+
+        r = dns_transaction_curl_make_url(t, &url);
+        if (r < 0)
+                return r;
+
+        r = curl_glue_make(&easy, url);
+        if (r < 0)
+                return r;
+
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_HEADERFUNCTION, dns_transaction_curl_header_callback))
+                return -EIO;
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_HEADERDATA, t))
+                return -EIO;
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_WRITEFUNCTION, dns_transaction_curl_write_callback))
+                return -EIO;
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_WRITEDATA, t))
+                return -EIO;
+
+        /* A DNS query has no business following redirects or fetching local files */
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_FOLLOWLOCATION, 0L))
+                return -EIO;
+#if LIBCURL_VERSION_NUM >= 0x075500 /* libcurl 7.85.0 */
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_PROTOCOLS_STR, "HTTPS"))
+                return -EIO;
+#endif
+
+        /* Prevents libcurl's native name lookups: pin the request to the IP address of the
+         * server we picked, since that's the one whose feature level we've been probing. */
+        r = asprintf(&rule, "%s:443:%s", t->server->server_string, t->server->server_string);
+        if (r < 0)
+                return log_debug_errno(r, "Failed to compound IP resolution to CURLOPT_RESOLVE parameter");
+
+        t->curl_resolve_rules = curl_slist_new(rule, NULL);
+        if (!t->curl_resolve_rules)
+                return -ENOMEM;
+
+        if (!easy_setopt(easy, LOG_DEBUG, CURLOPT_RESOLVE, t->curl_resolve_rules))
+                return -EIO;
+
+        log_debug("Emitting HTTPS request via curl for transaction %" PRIu16, t->id);
+        r = curl_glue_perform_async(m->curl_glue, easy, dns_transaction_curl_on_finished, t, &t->curl_slot);
+        if (r < 0)
+                return r;
+        TAKE_PTR(easy);
 
         return 0;
 }

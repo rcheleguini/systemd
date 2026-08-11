@@ -35,6 +35,12 @@ typedef struct Manager {
         DnsTlsManagerData dnstls_data;
 #endif
 
+#if ENABLE_DNS_OVER_HTTPS
+        /* One curl multi handle shared by all DNS-over-HTTPS transactions */
+        CurlGlue *curl_glue;
+        bool doh_unavailable;
+#endif
+
         /* Network */
         Hashmap *links;
 

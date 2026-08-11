@@ -58,6 +58,10 @@
 #include "time-util.h"
 #include "varlink-util.h"
 
+#if ENABLE_DNS_OVER_HTTPS
+#include "curl-util.h"
+#endif
+
 #define SEND_TIMEOUT_USEC (200 * USEC_PER_MSEC)
 
 static int manager_process_link(sd_netlink *rtnl, sd_netlink_message *mm, void *userdata) {
@@ -635,6 +639,7 @@ static void manager_set_defaults(Manager *m) {
         m->mdns_support = DEFAULT_MDNS_MODE;
         m->dnssec_mode = DEFAULT_DNSSEC_MODE;
         m->dns_over_tls_mode = DEFAULT_DNS_OVER_TLS_MODE;
+        m->dns_over_https_mode = DEFAULT_DNS_OVER_HTTPS_MODE;
         m->enable_cache = DNS_CACHE_MODE_YES;
         m->dns_stub_listener_mode = DNS_STUB_LISTENER_YES;
         m->read_etc_hosts = true;
@@ -868,6 +873,10 @@ Manager* manager_free(Manager *m) {
 
 #if ENABLE_DNS_OVER_TLS
         dnstls_manager_free(m);
+#endif
+
+#if ENABLE_DNS_OVER_HTTPS
+        m->curl_glue = curl_glue_unref(m->curl_glue);
 #endif
 
         set_free(m->refuse_record_types);
