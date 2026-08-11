@@ -69,6 +69,7 @@ endif
 
 resolve_common_template = {
         'dependencies' : [
+                libcurl_cflags,
                 libidn2_cflags,
                 libopenssl_cflags,
         ],
@@ -152,6 +153,9 @@ executables += [
         },
         resolve_test_template + {
                 'sources' : files('test-resolved-stream.c'),
+        },
+        resolve_test_template + {
+                'sources' : files('test-resolved-doh.c'),
         },
         resolve_test_template + {
                 'sources' : files('test-resolved-dummy-server.c'),

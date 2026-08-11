@@ -23,6 +23,7 @@ typedef enum ConditionType ConditionType;
 typedef enum DnsAnswerFlags DnsAnswerFlags;
 typedef enum DnsCacheMode DnsCacheMode;
 typedef enum DnsOverTlsMode DnsOverTlsMode;
+typedef enum DnsOverHttpsMode DnsOverHttpsMode;
 typedef enum DnsProtocol DnsProtocol;
 typedef enum DnssecMode DnssecMode;
 typedef enum Fido2EnrollFlags Fido2EnrollFlags;
